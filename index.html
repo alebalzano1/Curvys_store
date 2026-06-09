@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curvys.Store by Moni - Indumentaria de Edición Limitada</title>
+    
+    <!-- Meta tags SEO -->
+    <meta name="description" content="Indumentaria femenina de diseño y edición limitada. Envíos a todo el país. Diseños únicos pensados para realzar tus curvas. ¡Sé tu propia inspiración!">
+    <meta property="og:title" content="Curvys.Store by Moni - Tienda Oficial">
+    <meta property="og:description" content="Catálogo online de ropa femenina de edición limitada. Hacé tu pedido y finalizalo por WhatsApp. Envíos a todo el país.">
+    <meta property="og:type" content="website">
+    
+    <!-- Hojas de estilo -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Lucide Icons para Iconografía Moderna -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+    <!-- Banner superior de promociones y envíos -->
+    <div class="announcement-banner">
+        <p id="banner-text">✨ Carga inicial del sitio... | Indumentaria de diseño de edición limitada ✨</p>
+    </div>
+
+    <!-- Encabezado / Header principal -->
+    <header>
+        <div class="container header-container">
+            <a href="#" class="logo">
+                <div class="logo-circle">
+                    <!-- Ícono de Red estilizado (Boutique de ropa) -->
+                    <i data-lucide="sparkles" style="color: #d4af37; width: 20px; height: 20px;"></i>
+                </div>
+                <div class="logo-text">
+                    CURVYS
+                    <span>Store by Moni</span>
+                </div>
+            </a>
+            
+            <nav class="desktop-only">
+                <a href="#catalogo" class="nav-link active">Catálogo</a>
+                <a href="#contacto" class="nav-link">Contacto</a>
+            </nav>
+            
+            <div class="header-actions">
+                <!-- Botón al Panel Administrador -->
+                <a href="admin.html" class="cart-trigger" title="Panel Administrador" aria-label="Panel Administrador">
+                    <i data-lucide="settings" style="width: 22px; height: 22px;"></i>
+                </a>
+                <!-- Trigger para el Carrito flotante -->
+                <button class="cart-trigger" id="cart-trigger" aria-label="Abrir carrito">
+                    <i data-lucide="shopping-bag" style="width: 22px; height: 22px;"></i>
+                    <span class="cart-count" id="cart-count">0</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Sección Hero de Presentación -->
+    <section class="hero">
+        <div class="container">
+            <span class="hero-subtitle">Boutique Exclusiva</span>
+            <h1 class="hero-title" id="hero-title">Curvys.Store by Moni</h1>
+            <p class="hero-desc" id="hero-desc">Indumentaria de diseño único. Confección a medida y de edición limitada.</p>
+            <div class="hero-buttons">
+                <a href="#catalogo" class="btn btn-primary">
+                    <i data-lucide="shopping-cart" style="width: 18px; height: 18px;"></i>
+                    Ver Catálogo
+                </a>
+                <a href="#" id="instagram-link" target="_blank" class="btn btn-secondary">
+                    <i data-lucide="instagram" style="width: 18px; height: 18px;"></i>
+                    Instagram
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Barra de Filtros y Búsqueda de Productos -->
+    <section class="search-filter-section" id="catalogo">
+        <div class="container search-filter-wrapper">
+            <!-- Barra de categorías deslizable horizontalmente -->
+            <div class="categories-scroll" id="categories-scroll">
+                <!-- Se inyecta dinámicamente con JS -->
+            </div>
+            
+            <!-- Buscador en tiempo real -->
+            <div class="search-box">
+                <i data-lucide="search" style="width: 18px; height: 18px;"></i>
+                <input type="text" id="search-input" placeholder="Buscar prenda...">
+            </div>
+        </div>
+    </section>
+
+    <!-- Grilla del Catálogo Oficial -->
+    <main class="catalog-section">
+        <div class="container">
+            <div class="section-title-wrapper">
+                <div>
+                    <h2 class="section-title">Colección Disponible</h2>
+                    <p class="section-subtitle">Edición limitada y lanzamientos únicos</p>
+                </div>
+                <span class="product-count" id="product-count">0 productos</span>
+            </div>
+            
+            <div class="products-grid" id="products-grid">
+                <!-- Se renderizan las tarjetas de producto mediante app.js -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Cajón deslizable del Carrito de Compras (Drawer) -->
+    <div class="cart-drawer-overlay" id="cart-overlay">
+        <div class="cart-drawer">
+            <div class="cart-drawer-header">
+                <h3 class="cart-drawer-title">Tu Carrito</h3>
+                <button class="cart-drawer-close" id="cart-close" aria-label="Cerrar carrito">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            
+            <!-- Contenedor de artículos en el carrito -->
+            <div class="cart-items-container" id="cart-items">
+                <!-- Inyección dinámica con JS -->
+            </div>
+            
+            <!-- Footer del Carrito con totales y formulario de contacto -->
+            <div class="cart-drawer-footer">
+                <div class="cart-total-row">
+                    <span class="cart-total-label">Total estimado:</span>
+                    <span class="cart-total-value" id="cart-total">$0</span>
+                </div>
+                
+                <!-- Formulario de Finalización -->
+                <form id="checkout-form" class="checkout-form-container">
+                    <span class="checkout-title">Datos del Pedido</span>
+                    
+                    <div class="form-group">
+                        <label for="client-name">Nombre Completo *</label>
+                        <input type="text" id="client-name" class="form-control" placeholder="Ej. María Pérez" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="client-shipping">Método de Entrega</label>
+                        <select id="client-shipping" class="form-control">
+                            <option value="retiro">Retirar por Taller (Sin Costo)</option>
+                            <option value="correo">Envío por Correo (Todo el país)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="address-group" style="display: none;">
+                        <label for="client-address">Dirección de Envío *</label>
+                        <input type="text" id="client-address" class="form-control" placeholder="Dirección, Localidad, CP">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="client-notes">Notas / Talle personalizado</label>
+                        <textarea id="client-notes" class="form-control" rows="2" placeholder="Ej: Me gustaría el sweter en azul si es posible o talle extra..."></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="whatsapp-btn" style="width: 100%; border-radius: 8px; margin-top: 10px;">
+                        <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+                        Finalizar por WhatsApp
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Vista Detallada de Producto -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close" aria-label="Cerrar modal">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+            <div class="modal-media">
+                <img id="modal-img" src="" alt="Cargando imagen...">
+            </div>
+            <div class="modal-info">
+                <span class="modal-cat" id="modal-cat">Categoría</span>
+                <h2 class="modal-title" id="modal-title">Título del Producto</h2>
+                <div class="modal-price" id="modal-price">$0</div>
+                <p class="modal-desc" id="modal-desc">Descripción del producto...</p>
+                
+                <div class="size-selector-wrap">
+                    <h4 class="selector-label">Talles Disponibles</h4>
+                    <div class="size-chips" id="modal-sizes">
+                        <!-- Chips de talle inyectados dinámicamente -->
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button class="btn btn-primary" id="modal-add-to-cart" style="width: 100%; border-radius: 8px;">
+                        Agregar al Carrito
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pie de página / Footer -->
+    <footer id="contacto">
+        <div class="container footer-grid">
+            <div class="footer-brand">
+                <a href="#" class="logo">
+                    <div class="logo-circle">
+                        <i data-lucide="sparkles" style="color: #d4af37; width: 20px; height: 20px;"></i>
+                    </div>
+                    <div class="logo-text">
+                        CURVYS
+                        <span>Store by Moni</span>
+                    </div>
+                </a>
+                <p class="footer-desc" id="footer-about">Indumentaria de diseño único de edición limitada. Sé tu propia inspiración.</p>
+            </div>
+            
+            <div>
+                <h4 class="footer-title">Menú</h4>
+                <ul class="footer-links">
+                    <li><a href="#">Inicio</a></li>
+                    <li><a href="#catalogo">Catálogo</a></li>
+                    <li><a href="admin.html">Administrador</a></li>
+                    <li><a href="#contacto">Contacto</a></li>
+                </ul>
+            </div>
+            
+            <div>
+                <h4 class="footer-title">Redes Sociales</h4>
+                <div class="social-links">
+                    <a href="#" target="_blank" class="social-icon" id="footer-insta" aria-label="Instagram">
+                        <i data-lucide="instagram"></i>
+                    </a>
+                    <a href="#" target="_blank" class="social-icon" id="footer-whatsapp" aria-label="WhatsApp">
+                        <i data-lucide="phone"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer-bottom">
+            <div class="container">
+                <p>&copy; 2026 Curvys.Store by Moni. Todos los derechos reservados. Hecho con amor.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Firebase SDK (Versión 8 - compatible con tu estructura de Universe Celu y Marroquinería) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <!-- Controladores y Configuración -->
+    <script src="firebase-config.js"></script>
+    <script src="firebase-service.js"></script>
+    <script src="seed-data.js"></script>
+    <script src="app.js"></script>
+
+    <!-- Inicializar íconos Lucide -->
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

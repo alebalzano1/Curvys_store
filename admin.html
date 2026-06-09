@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Administrador - Curvys Store</title>
+    
+    <!-- Hojas de estilo -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body style="background-color: #050507;">
+
+    <!-- 1. Sección de Login (Se muestra si no está autenticado) -->
+    <div class="container login-container" id="login-section">
+        <div class="login-card">
+            <div class="login-logo">
+                <div class="logo-circle" style="margin-bottom: 10px;">
+                    <i data-lucide="lock" style="color: #d4af37; width: 22px; height: 22px;"></i>
+                </div>
+                <h1 class="login-title">CURVYS Store</h1>
+                <p class="login-subtitle">Gestión de Catálogo Comercial</p>
+            </div>
+            
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-email">Correo Electrónico</label>
+                    <input type="email" id="login-email" class="form-control" placeholder="admin@curvys.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Contraseña</label>
+                    <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; border-radius: 8px; margin-top: 10px;">
+                    Ingresar al Panel
+                </button>
+            </form>
+            
+            <div style="margin-top: 25px; padding: 12px; background: rgba(212, 175, 55, 0.05); border: 1px dashed var(--border-accent); border-radius: 8px; text-align: left;">
+                <p style="font-size: 0.75rem; color: var(--accent); font-weight: 600; margin-bottom: 4px;">
+                    🔑 Servidor Local Sandbox Activo:
+                </p>
+                <p style="font-size: 0.7rem; color: var(--text-secondary); line-height: 1.4;">
+                    Para probar localmente sin conectar Firebase en la nube, ingresá usando:<br>
+                    <strong>Usuario:</strong> admin@curvys.com<br>
+                    <strong>Clave:</strong> curvysadmin
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Dashboard de Administración (Se muestra tras iniciar sesión) -->
+    <div id="admin-dashboard" style="display: none;">
+        
+        <!-- Header de Administración -->
+        <header class="admin-header">
+            <div class="container admin-header-container">
+                <div class="logo">
+                    <div class="logo-circle">
+                        <i data-lucide="sliders" style="color: #d4af37; width: 20px; height: 20px;"></i>
+                    </div>
+                    <div class="logo-text">
+                        PANEL CONTROL
+                        <span>Curvys.Store</span>
+                    </div>
+                </div>
+                
+                <div class="header-actions">
+                    <a href="index.html" class="btn btn-secondary" style="padding: 8px 16px; border-radius: 8px; font-size: 0.8rem;">
+                        <i data-lucide="eye" style="width: 16px; height: 16px;"></i>
+                        Ver Tienda
+                    </a>
+                    <button class="btn btn-primary" id="btn-logout" style="padding: 8px 16px; border-radius: 8px; font-size: 0.8rem; background: #ef4444; border-color: #ef4444; box-shadow: none;">
+                        <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                        Salir
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- Pestañas de Navegación -->
+            <div class="admin-tabs">
+                <button class="admin-tab-btn active" data-tab="productos">
+                    <i data-lucide="shirt" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
+                    Productos
+                </button>
+                <button class="admin-tab-btn" data-tab="categorias">
+                    <i data-lucide="tags" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
+                    Categorías
+                </button>
+                <button class="admin-tab-btn" data-tab="configuracion">
+                    <i data-lucide="settings" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
+                    Configuración
+                </button>
+            </div>
+
+            <!-- CONTENIDOS DE LAS PESTAÑAS -->
+
+            <!-- Pestaña 1: Productos -->
+            <div class="admin-panel active" id="panel-productos">
+                <div class="admin-card">
+                    <div class="admin-card-title">
+                        <h2>Catálogo de Prendas</h2>
+                        <button class="btn btn-primary" id="btn-new-product" style="padding: 8px 16px; border-radius: 8px; font-size: 0.85rem;">
+                            <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+                            Nueva Prenda
+                        </button>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Imagen</th>
+                                    <th>Prenda</th>
+                                    <th>Categoría</th>
+                                    <th>Talles</th>
+                                    <th>Precio</th>
+                                    <th>Disponibilidad</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="products-table-body">
+                                <!-- Filas inyectadas mediante admin-app.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña 2: Categorías -->
+            <div class="admin-panel" id="panel-categorias">
+                <div class="admin-card">
+                    <div class="admin-card-title">
+                        <h2>Gestor de Categorías</h2>
+                    </div>
+                    
+                    <form id="form-add-category" style="display: flex; gap: 10px; max-width: 500px; margin-bottom: 25px;">
+                        <input type="text" id="new-category-name" class="form-control" placeholder="Ej: Calzas" required>
+                        <button type="submit" class="btn btn-primary" style="padding: 10px 20px; border-radius: 8px; font-size: 0.85rem;">
+                            Agregar
+                        </button>
+                    </form>
+
+                    <h4 class="selector-label" style="margin-bottom: 12px;">Categorías Creadas</h4>
+                    <div class="admin-category-list" id="admin-categories-list">
+                        <!-- Chips de categorías cargados con JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña 3: Configuración General -->
+            <div class="admin-panel" id="panel-configuracion">
+                <div class="admin-card">
+                    <div class="admin-card-title">
+                        <h2>Configuración General de la Tienda</h2>
+                    </div>
+                    
+                    <form id="settings-form" style="display: flex; flex-direction: column; gap: 20px; max-width: 600px;">
+                        <div class="form-group">
+                            <label for="cfg-store-name">Nombre Comercial de la Tienda *</label>
+                            <input type="text" id="cfg-store-name" class="form-control" placeholder="Ej: Curvys.Store by Moni" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="cfg-whatsapp">Número de WhatsApp de Destino (para compras) *</label>
+                            <input type="text" id="cfg-whatsapp" class="form-control" placeholder="Ej: 5491133224455" required>
+                            <span class="form-help">Ingresar código de país y código de área sin el 15. Ej: 5491133224455.</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="cfg-instagram">Perfil de Instagram (URL completa)</label>
+                            <input type="url" id="cfg-instagram" class="form-control" placeholder="https://www.instagram.com/curvys.store_by_moni">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="cfg-shipping">Mensaje Informativo de Envío</label>
+                            <input type="text" id="cfg-shipping" class="form-control" placeholder="Ej: Envíos a todo el país">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="cfg-banner">Mensaje del Banner Superior de Promociones</label>
+                            <input type="text" id="cfg-banner" class="form-control" placeholder="Ej: ✨ ¡Sé tu propia inspiración! ✨">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" style="width: fit-content; padding: 12px 30px; border-radius: 8px; align-self: flex-start;">
+                            <i data-lucide="save" style="width: 18px; height: 18px;"></i>
+                            Guardar Cambios
+                        </button>
+                    </form>
+                </div>
+                
+                <!-- Ajustes de base de datos / Mantenimiento -->
+                <div class="admin-card" style="border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.02);">
+                    <div class="admin-card-title" style="border-color: rgba(239, 68, 68, 0.1);">
+                        <h2 style="color: #ef4444;">Zona de Mantenimiento</h2>
+                    </div>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;">
+                        ¿Necesitas restablecer la tienda a su catálogo inicial para demostración? Esta opción eliminará todos los cambios en productos y configuraciones hechos hasta ahora y reinstalará los datos de prueba oficiales.
+                    </p>
+                    <button class="btn" id="btn-reset-db" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1.5px solid rgba(239, 68, 68, 0.3); padding: 10px 20px; border-radius: 8px;">
+                        <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                        Restablecer Base de Datos
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Modal de Creación / Edición de Producto (ABM) -->
+    <div class="modal-overlay" id="admin-product-modal">
+        <div class="modal-content" style="max-width: 650px; grid-template-columns: 1fr;">
+            <button class="modal-close" id="admin-modal-close" aria-label="Cerrar modal">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+            
+            <div class="modal-admin-form">
+                <h3 class="modal-title" id="admin-modal-title" style="margin-bottom: 20px;">Agregar Nueva Prenda</h3>
+                
+                <form id="product-form" style="display: flex; flex-direction: column; gap: 15px;">
+                    <div class="form-group">
+                        <label for="prod-name">Nombre de la Prenda *</label>
+                        <input type="text" id="prod-name" class="form-control" placeholder="Ej: Sweter Lanilla" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="prod-desc">Descripción / Detalles *</label>
+                        <textarea id="prod-desc" class="form-control" rows="3" placeholder="Detalles de la tela, diseño y corte..." required></textarea>
+                    </div>
+
+                    <div class="form-row form-row-3">
+                        <div class="form-group">
+                            <label for="prod-price">Precio ($ARS) *</label>
+                            <input type="number" id="prod-price" class="form-control" placeholder="18500" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="prod-category">Categoría *</label>
+                            <select id="prod-category" class="form-control" required>
+                                <!-- Categorías cargadas dinámicamente -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="prod-sizes">Talles Disponibles</label>
+                            <input type="text" id="prod-sizes" class="form-control" placeholder="S, M, L, XL">
+                            <span class="form-help">Separar por comas. Dejar vacío si es talle único.</span>
+                        </div>
+                    </div>
+
+                    <!-- Botones de estado (Stock, Limitado) -->
+                    <div class="form-row form-row-2">
+                        <div class="switch-group">
+                            <div class="switch-label">
+                                <span class="switch-title">Stock Disponible</span>
+                                <span class="switch-desc">Habilitar compra</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="prod-stock">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="switch-group">
+                            <div class="switch-label">
+                                <span class="switch-title">Edición Limitada</span>
+                                <span class="switch-desc">Badge destacado</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="prod-limited">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Subida de imagen con Cloudinary -->
+                    <div class="form-group">
+                        <label>Foto de la Prenda</label>
+                        <div class="image-upload-wrapper">
+                            <!-- Preview Box -->
+                            <div class="image-preview-box" id="image-preview">
+                                <span>Sin Imagen</span>
+                            </div>
+                            
+                            <!-- Uploader Zone -->
+                            <div class="drop-zone" id="drop-zone">
+                                <i data-lucide="upload-cloud" style="color: var(--accent); width: 32px; height: 32px;"></i>
+                                <p>Arrastrá la imagen aquí o haz click para seleccionar</p>
+                                <span>Formatos admitidos: JPG, PNG, WEBP</span>
+                                <input type="file" id="file-input" accept="image/*,video/*">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Campo URL directo en caso de fallback -->
+                    <div class="form-group">
+                        <label for="prod-image-url">Enlace directo de la imagen (Opcional)</label>
+                        <input type="url" id="prod-image-url" class="form-control" placeholder="https://images.unsplash.com/... (si querés pegar un link externo)">
+                    </div>
+
+                    <!-- Botones Footer -->
+                    <div class="modal-admin-form-footer">
+                        <button type="button" class="btn btn-secondary" id="btn-cancel-product" style="padding: 10px 20px; border-radius: 8px;">
+                            Cancelar
+                        </button>
+                        <button type="submit" class="btn btn-primary" style="padding: 10px 25px; border-radius: 8px;">
+                            Guardar Prenda
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK (Versión 8 - para compatibilidad) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <!-- Scripts del Administrador -->
+    <script src="firebase-config.js"></script>
+    <script src="firebase-service.js"></script>
+    <script src="seed-data.js"></script>
+    <script src="admin-app.js"></script>
+
+    <!-- Inicializar Lucide -->
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
