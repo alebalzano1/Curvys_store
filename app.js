@@ -273,7 +273,7 @@ function openProductModal(product) {
     
     // Crear chips de talles
     DOM.modalSizes.innerHTML = "";
-    if (product.sizes && product.sizes.length > 0) {
+    if (product.sizes && Array.isArray(product.sizes) && product.sizes.length > 0) {
         product.sizes.forEach(size => {
             const chip = document.createElement("button");
             chip.className = "size-chip";
@@ -462,7 +462,7 @@ function updateCartUI() {
 }
 
 // CHECKOUT POR WHATSAPP
-function sendWhatsAppOrder() {
+async function sendWhatsAppOrder() {
     if (cart.length === 0) return;
     
     // Obtener campos de contacto
@@ -510,12 +510,38 @@ function sendWhatsAppOrder() {
     
     mensaje += `\n🛒 _Pedido generado desde la web tienda._`;
 
+    // 1. Guardar en Base de Datos (Firestore o LocalStorage)
+    const orderData = {
+        id: `ord-${Date.now()}`,
+        clientName: nombre,
+        shippingMethod: envio,
+        address: envio === 'correo' ? direccion : '',
+        notes: notas,
+        items: cart.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            size: item.size,
+            quantity: item.quantity
+        })),
+        total: total,
+        status: "Pendiente",
+        createdAt: new Date().toISOString()
+    };
+
+    try {
+        await FirebaseService.saveOrder(orderData);
+        console.log("💾 Pedido registrado con éxito en la base de datos.");
+    } catch (dbErr) {
+        console.error("⚠️ Error al registrar pedido en la base de datos:", dbErr);
+    }
+
     // Obtener teléfono de destino (eliminar caracteres raros)
     const phone = (storeConfig.whatsapp || "5491133224455").replace(/[^0-9]/g, "");
     
-    // Generar url de WhatsApp
+    // Generar url de WhatsApp moderna
     const encodedText = encodeURIComponent(mensaje);
-    const whatsappUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${encodedText}`;
+    const whatsappUrl = `https://wa.me/${phone}?text=${encodedText}`;
     
     // Abrir enlace en nueva pestaña
     window.open(whatsappUrl, "_blank");

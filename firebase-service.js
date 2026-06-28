@@ -29,12 +29,16 @@ const FirebaseService = {
     async login(email, password) {
         if (!isFirebaseActive) {
             // Simulación local para el modo Sandbox
-            if (email === "admin@curvys.com" && password === "curvysadmin") {
+            const savedPassword = localStorage.getItem("curvys_admin_password_sandbox") || "curvysadmin";
+            if (email === "admin@curvys.com" && password === savedPassword) {
                 const dummyUser = { email: "admin@curvys.com", uid: "sandbox-admin-uid" };
                 localStorage.setItem("curvys_admin_logged", "true");
                 return { user: dummyUser };
             } else {
-                throw new Error("Credenciales inválidas para el Sandbox (Usa admin@curvys.com / curvysadmin).");
+                const helperMsg = savedPassword === "curvysadmin" 
+                    ? "(Usa admin@curvys.com / curvysadmin)" 
+                    : "(Usa admin@curvys.com / tu nueva contraseña)";
+                throw new Error(`Credenciales inválidas para el Sandbox ${helperMsg}.`);
             }
         }
         const auth = firebase.auth();
@@ -110,7 +114,7 @@ const FirebaseService = {
                 console.log("🌱 [Firebase] Autosiembra completada con éxito.");
             }
         } catch (error) {
-            console.error("❌ [Firebase] Error durante el proceso de autosiembra:", error);
+            // Ignorar silenciosamente si hay fallos de permisos (ej. no autenticado)
         }
     },
 
@@ -200,6 +204,90 @@ const FirebaseService = {
         }
     },
 
+    // --- PEDIDOS (ORDERS) ---
+    async getOrders() {
+        if (!isFirebaseActive) {
+            const local = localStorage.getItem("curvys_orders");
+            const orders = local ? JSON.parse(local) : [];
+            return orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
+        try {
+            console.log("[Firebase] Obteniendo pedidos de Firestore...");
+            const snapshot = await db.collection("orders").orderBy("createdAt", "desc").get();
+            return snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+        } catch (error) {
+            console.error("[Firebase] Error al obtener pedidos:", error);
+            // Fallback en caso de que falte índice de ordenación
+            try {
+                const snapshot = await db.collection("orders").get();
+                const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                return orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            } catch (innerError) {
+                console.error("[Firebase] Falló el fallback de obtener pedidos:", innerError);
+                throw error;
+            }
+        }
+    },
+
+    async saveOrder(order) {
+        if (!isFirebaseActive) {
+            let localOrders = await this.getOrders() || [];
+            const index = localOrders.findIndex(o => o.id === order.id);
+            if (index > -1) {
+                localOrders[index] = order;
+            } else {
+                localOrders.push(order);
+            }
+            localStorage.setItem("curvys_orders", JSON.stringify(localOrders));
+            return;
+        }
+        try {
+            console.log("[Firebase] Guardando pedido:", order.id);
+            await db.collection("orders").doc(order.id).set(order);
+        } catch (error) {
+            console.error("[Firebase] Error al guardar pedido:", error);
+            throw error;
+        }
+    },
+
+    async updateOrderStatus(id, status) {
+        if (!isFirebaseActive) {
+            let localOrders = await this.getOrders() || [];
+            const index = localOrders.findIndex(o => o.id === id);
+            if (index > -1) {
+                localOrders[index].status = status;
+                localStorage.setItem("curvys_orders", JSON.stringify(localOrders));
+            }
+            return;
+        }
+        try {
+            console.log("[Firebase] Actualizando estado de pedido:", id, status);
+            await db.collection("orders").doc(id).update({ status });
+        } catch (error) {
+            console.error("[Firebase] Error al actualizar estado de pedido:", error);
+            throw error;
+        }
+    },
+
+    async deleteOrder(id) {
+        if (!isFirebaseActive) {
+            let localOrders = await this.getOrders() || [];
+            localOrders = localOrders.filter(o => o.id !== id);
+            localStorage.setItem("curvys_orders", JSON.stringify(localOrders));
+            return;
+        }
+        try {
+            console.log("[Firebase] Eliminando pedido:", id);
+            await db.collection("orders").doc(id).delete();
+        } catch (error) {
+            console.error("[Firebase] Error al eliminar pedido:", error);
+            throw error;
+        }
+    },
+
     // --- CONFIGURACIÓN GENERAL ---
     async getConfig() {
         if (!isFirebaseActive) {
@@ -230,38 +318,27 @@ const FirebaseService = {
         }
     },
 
-    // --- SUBIDA DE IMÁGENES A CLOUDINARY ---
+    // --- SUBIDA DE IMÁGENES A FIREBASE STORAGE / SANDBOX ---
     async uploadImage(file) {
-        console.log("[Cloudinary] Iniciando subida a Cloudinary...");
-
-        // Usamos credenciales compartidas que proveen compatibilidad out-of-the-box
-        const cloudName = "dgb5o9y0v";
-        const uploadPreset = "ugda3w5p";
-        
-        const isVideo = file.type && file.type.startsWith("video/");
-        const resourceType = isVideo ? "video" : "image";
-        const url = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
-
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("upload_preset", uploadPreset);
-
-        try {
-            const response = await fetch(url, {
-                method: "POST",
-                body: formData
+        if (!isFirebaseActive) {
+            console.log("[Sandbox] Subiendo archivo localmente a base64...");
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = (err) => reject(err);
+                reader.readAsDataURL(file);
             });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error?.message || "Error al subir archivo");
-            }
-
-            const data = await response.json();
-            console.log("[Cloudinary] Archivo subido exitosamente:", data.secure_url);
-            return data.secure_url;
+        }
+        try {
+            console.log("[Firebase Storage] Subiendo archivo a Firebase Storage...");
+            const storageRef = firebase.storage().ref();
+            const fileRef = storageRef.child(`products/${Date.now()}_${file.name}`);
+            const snapshot = await fileRef.put(file);
+            const downloadUrl = await snapshot.ref.getDownloadURL();
+            console.log("[Firebase Storage] Archivo subido exitosamente:", downloadUrl);
+            return downloadUrl;
         } catch (error) {
-            console.error("[Cloudinary] Error crítico al subir archivo:", error);
+            console.error("[Firebase Storage] Error al subir archivo:", error);
             throw error;
         }
     }

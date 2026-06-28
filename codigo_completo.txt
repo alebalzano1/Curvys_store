@@ -1,0 +1,4345 @@
+================================================================================
+FILE: firebase-config.js
+================================================================================
+// Configuración de Firebase para Curvys Store by Moni
+// Si deseas conectar una base de datos real en la nube, reemplaza los valores de abajo
+// con las credenciales de tu proyecto de Firebase.
+const firebaseConfig = {
+    apiKey: "AIzaSyAzeR8fE833nUlmgMFmOPqp7ry5rXtqZFQ",
+    authDomain: "curvys.firebaseapp.com",
+    projectId: "curvys",
+    storageBucket: "curvys.firebasestorage.app",
+    messagingSenderId: "382707617453",
+    appId: "1:382707617453:web:397f72f079f4ba79ba0024",
+    
+    // Configuración de Cloudinary (Subida de imágenes)
+    // Deja estos campos vacíos si deseas usar las credenciales demo por defecto.
+    cloudinaryCloudName: "",
+    cloudinaryUploadPreset: ""
+};
+
+window.firebaseConfig = firebaseConfig;
+
+
+
+================================================================================
+FILE: firebase-service.js
+================================================================================
+// Firebase & Cloudinary Service para Curvys Store by Moni
+// Sincronización robusta en tiempo real con soporte de persistencia local (Sandbox)
+
+let db = null;
+let isFirebaseActive = false;
+
+// Inicializar Firebase si las credenciales son válidas
+try {
+    const config = window.firebaseConfig;
+    if (config && config.apiKey && config.apiKey !== "") {
+        firebase.initializeApp(config);
+        db = firebase.firestore();
+        isFirebaseActive = true;
+        console.log("🔥 [Firebase] Conexión establecida con éxito en la nube de Curvys Store.");
+    } else {
+        console.warn("⚠️ [Firebase] Corriendo en modo Local / Sandbox (LocalStorage). Configura las credenciales reales en firebase-config.js para conectar la base de datos en la nube.");
+    }
+} catch (error) {
+    console.error("❌ [Firebase] Error al inicializar Firebase:", error);
+}
+
+const FirebaseService = {
+    // --- Diagnóstico de Conexión ---
+    isCloudActive() {
+        return isFirebaseActive;
+    },
+
+    // --- AUTENTICACIÓN ---
+    async login(email, password) {
+        if (!isFirebaseActive) {
+            // Simulación local para el modo Sandbox
+            const savedPassword = localStorage.getItem("curvys_admin_password_sandbox") || "curvysadmin";
+            if (email === "admin@curvys.com" && password === savedPassword) {
+                const dummyUser = { email: "admin@curvys.com", uid: "sandbox-admin-uid" };
+                localStorage.setItem("curvys_admin_logged", "true");
+                return { user: dummyUser };
+            } else {
+                const helperMsg = savedPassword === "curvysadmin" 
+                    ? "(Usa admin@curvys.com / curvysadmin)" 
+                    : "(Usa admin@curvys.com / tu nueva contraseña)";
+                throw new Error(`Credenciales inválidas para el Sandbox ${helperMsg}.`);
+            }
+        }
+        const auth = firebase.auth();
+        return await auth.signInWithEmailAndPassword(email, password);
+    },
+
+    async changePassword(newPassword) {
+        if (!isFirebaseActive) {
+            localStorage.setItem("curvys_admin_password_sandbox", newPassword);
+            return;
+        }
+        const user = firebase.auth().currentUser;
+        if (user) {
+            return await user.updatePassword(newPassword);
+        } else {
+            throw new Error("No hay un usuario autenticado activo.");
+        }
+    },
+
+    async logout() {
+        if (!isFirebaseActive) {
+            localStorage.removeItem("curvys_admin_logged");
+            return;
+        }
+        const auth = firebase.auth();
+        return await auth.signOut();
+    },
+
+    onAuth(callback) {
+        if (!isFirebaseActive) {
+            // Evento simulado para local
+            const logged = localStorage.getItem("curvys_admin_logged") === "true";
+            if (logged) {
+                callback({ email: "admin@curvys.com", uid: "sandbox-admin-uid" });
+            } else {
+                callback(null);
+            }
+            return;
+        }
+        const auth = firebase.auth();
+        auth.onAuthStateChanged((user) => {
+            callback(user);
+        });
+    },
+
+    // --- Autosiembra (Seeding) ---
+    async autoSeedDatabase(initialProducts, initialConfig) {
+        if (!isFirebaseActive) {
+            // Verificar si el almacenamiento local está vacío
+            const localProducts = localStorage.getItem("curvys_products");
+            const localConfig = localStorage.getItem("curvys_config");
+            if (!localProducts) {
+                localStorage.setItem("curvys_products", JSON.stringify(initialProducts));
+            }
+            if (!localConfig) {
+                localStorage.setItem("curvys_config", JSON.stringify(initialConfig));
+            }
+            return;
+        }
+        try {
+            const productSnapshot = await db.collection("products").limit(1).get();
+            if (productSnapshot.empty) {
+                console.log("🌱 [Firebase] Base de datos vacía. Iniciando autosiembra para Curvys Store...");
+
+                // Sembrar Productos
+                for (const p of initialProducts) {
+                    await db.collection("products").doc(p.id).set(p);
+                }
+
+                // Sembrar Configuración
+                await db.collection("settings").doc("main").set(initialConfig);
+
+                console.log("🌱 [Firebase] Autosiembra completada con éxito.");
+            }
+        } catch (error) {
+            // Ignorar silenciosamente si hay fallos de permisos (ej. no autenticado)
+        }
+    },
+
+    // --- Restablecer y Sembrar Base de Datos Forzado ---
+    async forceResetAndSeedDatabase(initialProducts, initialConfig) {
+        if (!isFirebaseActive) {
+            localStorage.setItem("curvys_products", JSON.stringify(initialProducts));
+            localStorage.setItem("curvys_config", JSON.stringify(initialConfig));
+            return;
+        }
+        try {
+            console.log("⚠️ [Firebase] Iniciando limpieza total de productos...");
+            const snapshot = await db.collection("products").get();
+            for (const doc of snapshot.docs) {
+                await db.collection("products").doc(doc.id).delete();
+            }
+
+            console.log("🌱 [Firebase] Escribiendo catálogo oficial limpio...");
+            for (const p of initialProducts) {
+                await db.collection("products").doc(p.id).set(p);
+            }
+
+            console.log("⚙️ [Firebase] Escribiendo configuraciones comerciales por defecto...");
+            await db.collection("settings").doc("main").set(initialConfig);
+
+            console.log("✨ [Firebase] Base de datos restablecida con éxito.");
+        } catch (error) {
+            console.error("❌ [Firebase] Error en restablecimiento forzado:", error);
+            throw error;
+        }
+    },
+
+    // --- PRODUCTOS ---
+    async getProducts() {
+        if (!isFirebaseActive) {
+            const local = localStorage.getItem("curvys_products");
+            return local ? JSON.parse(local) : [];
+        }
+        try {
+            console.log("[Firebase] Obteniendo productos de Firestore...");
+            const snapshot = await db.collection("products").get();
+            return snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+        } catch (error) {
+            console.error("[Firebase] Error al obtener productos:", error);
+            throw error;
+        }
+    },
+
+    async saveProduct(product) {
+        if (!isFirebaseActive) {
+            let localProducts = await this.getProducts() || [];
+            const index = localProducts.findIndex(p => p.id === product.id);
+            if (index > -1) {
+                localProducts[index] = product;
+            } else {
+                localProducts.push(product);
+            }
+            localStorage.setItem("curvys_products", JSON.stringify(localProducts));
+            return;
+        }
+        try {
+            const id = product.id;
+            console.log("[Firebase] Guardando producto:", id);
+            await db.collection("products").doc(id).set(product);
+        } catch (error) {
+            console.error("[Firebase] Error al guardar producto:", error);
+            throw error;
+        }
+    },
+
+    async deleteProduct(id) {
+        if (!isFirebaseActive) {
+            let localProducts = await this.getProducts() || [];
+            localProducts = localProducts.filter(p => p.id !== id);
+            localStorage.setItem("curvys_products", JSON.stringify(localProducts));
+            return;
+        }
+        try {
+            console.log("[Firebase] Eliminando producto:", id);
+            await db.collection("products").doc(id).delete();
+        } catch (error) {
+            console.error("[Firebase] Error al eliminar producto:", error);
+            throw error;
+        }
+    },
+
+    // --- PEDIDOS (ORDERS) ---
+    async getOrders() {
+        if (!isFirebaseActive) {
+            const local = localStorage.getItem("curvys_orders");
+            const orders = local ? JSON.parse(local) : [];
+            return orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
+        try {
+            console.log("[Firebase] Obteniendo pedidos de Firestore...");
+            const snapshot = await db.collection("orders").orderBy("createdAt", "desc").get();
+            return snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+        } catch (error) {
+            console.error("[Firebase] Error al obtener pedidos:", error);
+            // Fallback en caso de que falte índice de ordenación
+            try {
+                const snapshot = await db.collection("orders").get();
+                const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                return orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            } catch (innerError) {
+                console.error("[Firebase] Falló el fallback de obtener pedidos:", innerError);
+                throw error;
+            }
+        }
+    },
+
+    async saveOrder(order) {
+        if (!isFirebaseActive) {
+            let localOrders = await this.getOrders() || [];
+            const index = localOrders.findIndex(o => o.id === order.id);
+            if (index > -1) {
+                localOrders[index] = order;
+            } else {
+                localOrders.push(order);
+            }
+            localStorage.setItem("curvys_orders", JSON.stringify(localOrders));
+            return;
+        }
+        try {
+            console.log("[Firebase] Guardando pedido:", order.id);
+            await db.collection("orders").doc(order.id).set(order);
+        } catch (error) {
+            console.error("[Firebase] Error al guardar pedido:", error);
+            throw error;
+        }
+    },
+
+    async updateOrderStatus(id, status) {
+        if (!isFirebaseActive) {
+            let localOrders = await this.getOrders() || [];
+            const index = localOrders.findIndex(o => o.id === id);
+            if (index > -1) {
+                localOrders[index].status = status;
+                localStorage.setItem("curvys_orders", JSON.stringify(localOrders));
+            }
+            return;
+        }
+        try {
+            console.log("[Firebase] Actualizando estado de pedido:", id, status);
+            await db.collection("orders").doc(id).update({ status });
+        } catch (error) {
+            console.error("[Firebase] Error al actualizar estado de pedido:", error);
+            throw error;
+        }
+    },
+
+    async deleteOrder(id) {
+        if (!isFirebaseActive) {
+            let localOrders = await this.getOrders() || [];
+            localOrders = localOrders.filter(o => o.id !== id);
+            localStorage.setItem("curvys_orders", JSON.stringify(localOrders));
+            return;
+        }
+        try {
+            console.log("[Firebase] Eliminando pedido:", id);
+            await db.collection("orders").doc(id).delete();
+        } catch (error) {
+            console.error("[Firebase] Error al eliminar pedido:", error);
+            throw error;
+        }
+    },
+
+    // --- CONFIGURACIÓN GENERAL ---
+    async getConfig() {
+        if (!isFirebaseActive) {
+            const local = localStorage.getItem("curvys_config");
+            return local ? JSON.parse(local) : null;
+        }
+        try {
+            console.log("[Firebase] Obteniendo configuraciones de Firestore...");
+            const doc = await db.collection("settings").doc("main").get();
+            return doc.exists ? doc.data() : null;
+        } catch (error) {
+            console.error("[Firebase] Error al obtener configuración:", error);
+            throw error;
+        }
+    },
+
+    async saveConfig(configData) {
+        if (!isFirebaseActive) {
+            localStorage.setItem("curvys_config", JSON.stringify(configData));
+            return;
+        }
+        try {
+            console.log("[Firebase] Guardando configuración general...");
+            await db.collection("settings").doc("main").set(configData);
+        } catch (error) {
+            console.error("[Firebase] Error al guardar configuración:", error);
+            throw error;
+        }
+    },
+
+    // --- SUBIDA DE IMÁGENES A FIREBASE STORAGE / SANDBOX ---
+    async uploadImage(file) {
+        if (!isFirebaseActive) {
+            console.log("[Sandbox] Subiendo archivo localmente a base64...");
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = (err) => reject(err);
+                reader.readAsDataURL(file);
+            });
+        }
+        try {
+            console.log("[Firebase Storage] Subiendo archivo a Firebase Storage...");
+            const storageRef = firebase.storage().ref();
+            const fileRef = storageRef.child(`products/${Date.now()}_${file.name}`);
+            const snapshot = await fileRef.put(file);
+            const downloadUrl = await snapshot.ref.getDownloadURL();
+            console.log("[Firebase Storage] Archivo subido exitosamente:", downloadUrl);
+            return downloadUrl;
+        } catch (error) {
+            console.error("[Firebase Storage] Error al subir archivo:", error);
+            throw error;
+        }
+    }
+};
+
+window.FirebaseService = FirebaseService;
+
+// Inicialización de autosiembra al cargar la página
+document.addEventListener("DOMContentLoaded", () => {
+    if (window.initialProducts && window.initialConfig) {
+        FirebaseService.autoSeedDatabase(
+            window.initialProducts,
+            window.initialConfig
+        );
+    }
+});
+
+
+
+================================================================================
+FILE: seed-data.js
+================================================================================
+// Datos de semilla (Seed Data) iniciales para Curvys Store by Moni
+
+const initialProducts = [
+    {
+        id: "prod-1",
+        name: "Sweter Lanilla Soft",
+        description: "Sweter de lanilla súper suave, abrigado y con caída suelta. Ideal para un look casual y súper cómodo de uso diario. Edición limitada en talles amplios.",
+        price: 18500,
+        category: "Abrigos",
+        sizes: ["L", "XL", "XXL"],
+        image: "https://images.unsplash.com/photo-1574169208507-84376144848b?q=80&w=800&auto=format&fit=crop",
+        video: "",
+        inStock: true,
+        isLimited: true,
+        createdAt: new Date().toISOString()
+    },
+    {
+        id: "prod-2",
+        name: "Blusa Violeta Abullonada",
+        description: "Blusa con cuello alto y mangas abullonadas en color violeta vibrante. Tejido sedoso y de excelente caída para lucir elegante y sofisticada. Edición limitada.",
+        price: 15400,
+        category: "Blusas",
+        sizes: ["M", "L", "XL"],
+        image: "https://images.unsplash.com/photo-1608231387042-66d1773070a5?q=80&w=800&auto=format&fit=crop",
+        video: "",
+        inStock: true,
+        isLimited: true,
+        createdAt: new Date().toISOString()
+    },
+    {
+        id: "prod-3",
+        name: "Saco de Abrigo Confort",
+        description: "Saco tejido artesanalmente con hilados suaves y esponjosos de lanilla. Calentito, cómodo y con gran elasticidad. Diseño exclusivo de la marca.",
+        price: 21500,
+        category: "Abrigos",
+        sizes: ["L", "XL", "XXL", "XXXL"],
+        image: "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?q=80&w=800&auto=format&fit=crop",
+        video: "",
+        inStock: true,
+        isLimited: false,
+        createdAt: new Date().toISOString()
+    },
+    {
+        id: "prod-4",
+        name: "Pantalón Sastrero Curve",
+        description: "Pantalón pinzado de tiro alto en gabardina elastizada premium. Confeccionado pensando en realzar las curvas con total comodidad.",
+        price: 19800,
+        category: "Pantalones",
+        sizes: ["44", "46", "48", "50", "52"],
+        image: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=800&auto=format&fit=crop",
+        video: "",
+        inStock: true,
+        isLimited: true,
+        createdAt: new Date().toISOString()
+    }
+];
+
+const initialConfig = {
+    storeName: "Curvys.Store by Moni",
+    whatsapp: "5491133224455", // Teléfono de prueba para WhatsApp
+    instagram: "https://www.instagram.com/curvys.store_by_moni",
+    shippingText: "Envíos a todo el país",
+    bannerText: "✨ Indumentaria de edición limitada — ¡Sé tu propia inspiración! ✨",
+    categories: ["Abrigos", "Blusas", "Pantalones", "Remeras", "Accesorios"]
+};
+
+// Exportar para uso en otros scripts
+window.initialProducts = initialProducts;
+window.initialConfig = initialConfig;
+
+
+
+================================================================================
+FILE: app.js
+================================================================================
+// Main Client Script - Curvys Store by Moni
+
+// Variables de estado
+let products = [];
+let storeConfig = {};
+let cart = [];
+let activeCategory = "Todos";
+let searchQuery = "";
+let selectedSize = "";
+
+// Referencias a elementos del DOM
+const DOM = {
+    productsGrid: document.getElementById("products-grid"),
+    categoriesScroll: document.getElementById("categories-scroll"),
+    productCount: document.getElementById("product-count"),
+    searchInput: document.getElementById("search-input"),
+    
+    // Carrito
+    cartOverlay: document.getElementById("cart-overlay"),
+    cartTrigger: document.getElementById("cart-trigger"),
+    cartClose: document.getElementById("cart-close"),
+    cartItems: document.getElementById("cart-items"),
+    cartCount: document.getElementById("cart-count"),
+    cartTotal: document.getElementById("cart-total"),
+    
+    // Formulario de Compra
+    checkoutForm: document.getElementById("checkout-form"),
+    whatsappBtn: document.getElementById("whatsapp-btn"),
+    
+    // Modal de Detalle
+    modalOverlay: document.getElementById("modal-overlay"),
+    modalClose: document.getElementById("modal-close"),
+    modalImg: document.getElementById("modal-img"),
+    modalCat: document.getElementById("modal-cat"),
+    modalTitle: document.getElementById("modal-title"),
+    modalPrice: document.getElementById("modal-price"),
+    modalDesc: document.getElementById("modal-desc"),
+    modalSizes: document.getElementById("modal-sizes"),
+    modalAddToCart: document.getElementById("modal-add-to-cart"),
+    
+    // Banner e Información General
+    bannerText: document.getElementById("banner-text"),
+    heroTitle: document.getElementById("hero-title"),
+    heroDesc: document.getElementById("hero-desc"),
+    footerAbout: document.getElementById("footer-about"),
+    footerInsta: document.getElementById("footer-insta"),
+    footerWhatsapp: document.getElementById("footer-whatsapp"),
+    instagramLink: document.getElementById("instagram-link"),
+    contactLink: document.getElementById("contact-link")
+};
+
+// Inicialización de la aplicación
+async function initApp() {
+    try {
+        console.log("🚀 [App] Inicializando tienda...");
+        
+        // Cargar Carrito desde LocalStorage
+        loadCart();
+
+        // Obtener datos del servicio de base de datos
+        products = await FirebaseService.getProducts();
+        storeConfig = await FirebaseService.getConfig();
+
+        // Caídas de seguridad en caso de base de datos vacía o carga demorada
+        if (!products || products.length === 0) {
+            products = window.initialProducts || [];
+        }
+        if (!storeConfig || Object.keys(storeConfig).length === 0) {
+            storeConfig = window.initialConfig || {};
+        }
+
+        // Configurar UI con datos del negocio
+        applyStoreConfig();
+
+        // Renderizar Categorías y Productos
+        renderCategories();
+        renderProducts();
+        updateCartUI();
+
+        // Registrar Event Listeners
+        registerEventListeners();
+
+    } catch (error) {
+        console.error("❌ [App] Error al inicializar la tienda:", error);
+        showToast("Error al cargar la tienda. Usando datos de respaldo.");
+        
+        // Cargamos de respaldo inmediato
+        products = window.initialProducts || [];
+        storeConfig = window.initialConfig || {};
+        applyStoreConfig();
+        renderCategories();
+        renderProducts();
+        updateCartUI();
+        registerEventListeners();
+    }
+}
+
+// Configurar elementos informativos de la marca
+function applyStoreConfig() {
+    if (DOM.bannerText) DOM.bannerText.textContent = storeConfig.bannerText || "";
+    if (DOM.heroTitle) DOM.heroTitle.textContent = storeConfig.storeName || "Curvys.Store by Moni";
+    if (DOM.heroDesc) DOM.heroDesc.textContent = storeConfig.shippingText ? `👗 Edición limitada | 📦 ${storeConfig.shippingText}` : "👗 Edición limitada | Envíos a todo el país";
+    if (DOM.footerAbout) DOM.footerAbout.textContent = `Indumentaria de diseño y edición limitada. Confección artesanal pensada para realzar tus curvas y hacerte lucir fantástica. ${storeConfig.shippingText || "Envíos a todo el país."}`;
+    
+    // Configurar enlaces sociales
+    if (DOM.instagramLink) DOM.instagramLink.href = storeConfig.instagram || "#";
+    if (DOM.contactLink) DOM.contactLink.href = `https://wa.me/${storeConfig.whatsapp}`;
+    if (DOM.footerInsta) DOM.footerInsta.href = storeConfig.instagram || "#";
+    if (DOM.footerWhatsapp) DOM.footerWhatsapp.href = `https://wa.me/${storeConfig.whatsapp}`;
+}
+
+// Registrar Eventos de la Interfaz
+function registerEventListeners() {
+    // Buscador
+    if (DOM.searchInput) {
+        DOM.searchInput.addEventListener("input", (e) => {
+            searchQuery = e.target.value.toLowerCase().trim();
+            renderProducts();
+        });
+    }
+
+    // Carrito Trigger
+    if (DOM.cartTrigger) {
+        DOM.cartTrigger.addEventListener("click", () => toggleCartDrawer(true));
+    }
+    if (DOM.cartClose) {
+        DOM.cartClose.addEventListener("click", () => toggleCartDrawer(false));
+    }
+    if (DOM.cartOverlay) {
+        DOM.cartOverlay.addEventListener("click", (e) => {
+            if (e.target === DOM.cartOverlay) {
+                toggleCartDrawer(false);
+            }
+        });
+    }
+
+    // Modal de Detalle
+    if (DOM.modalClose) {
+        DOM.modalClose.addEventListener("click", () => toggleDetailModal(false));
+    }
+    if (DOM.modalOverlay) {
+        DOM.modalOverlay.addEventListener("click", (e) => {
+            if (e.target === DOM.modalOverlay) {
+                toggleDetailModal(false);
+            }
+        });
+    }
+
+    // Finalizar compra (WhatsApp Checkout)
+    if (DOM.checkoutForm) {
+        DOM.checkoutForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            sendWhatsAppOrder();
+        });
+    }
+}
+
+// Renderizar barra de categorías
+function renderCategories() {
+    if (!DOM.categoriesScroll) return;
+    
+    const categories = ["Todos", ...(storeConfig.categories || [])];
+    DOM.categoriesScroll.innerHTML = "";
+    
+    categories.forEach(cat => {
+        const btn = document.createElement("button");
+        btn.className = `category-btn ${cat === activeCategory ? 'active' : ''}`;
+        btn.textContent = cat;
+        btn.addEventListener("click", () => {
+            // Cambiar categoría activa
+            document.querySelectorAll(".category-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeCategory = cat;
+            renderProducts();
+        });
+        DOM.categoriesScroll.appendChild(btn);
+    });
+}
+
+// Renderizar tarjetas de producto
+function renderProducts() {
+    if (!DOM.productsGrid) return;
+    
+    DOM.productsGrid.innerHTML = "";
+    
+    // Filtrar productos
+    const filteredProducts = products.filter(p => {
+        const matchesCategory = activeCategory === "Todos" || p.category === activeCategory;
+        const matchesSearch = p.name.toLowerCase().includes(searchQuery) || 
+                              p.description.toLowerCase().includes(searchQuery);
+        return matchesCategory && matchesSearch;
+    });
+    
+    // Actualizar conteo
+    if (DOM.productCount) {
+        DOM.productCount.textContent = `${filteredProducts.length} producto${filteredProducts.length !== 1 ? 's' : ''}`;
+    }
+
+    if (filteredProducts.length === 0) {
+        DOM.productsGrid.innerHTML = `
+            <div class="cart-empty" style="grid-column: 1/-1; padding: 60px 0;">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="8" y1="12" x2="16" y2="12"></line>
+                </svg>
+                <h3>No se encontraron productos</h3>
+                <p>Prueba buscando con otros términos o seleccionando otra categoría.</p>
+            </div>
+        `;
+        return;
+    }
+
+    filteredProducts.forEach(product => {
+        const card = document.createElement("div");
+        card.className = "product-card";
+        
+        // Generar badges
+        let badgesHtml = "";
+        if (product.isLimited) {
+            badgesHtml += `<span class="badge badge-limited">Edición Limitada</span>`;
+        }
+        if (!product.inStock) {
+            badgesHtml += `<span class="badge badge-outofstock">Sin Stock</span>`;
+        }
+
+        card.innerHTML = `
+            <div class="product-card-media" style="cursor: pointer;">
+                <div class="card-badges">${badgesHtml}</div>
+                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600'}" class="product-card-img" alt="${product.name}" loading="lazy">
+            </div>
+            <div class="product-card-body">
+                <span class="product-card-cat">${product.category}</span>
+                <h3 class="product-card-title">${product.name}</h3>
+                <p class="product-card-desc">${product.description}</p>
+                <div class="product-card-bottom">
+                    <span class="product-card-price">$${product.price.toLocaleString('es-AR')}</span>
+                    <button class="btn-card-add" ${!product.inStock ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''} title="Ver talles y agregar">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Click en la tarjeta o botón agregar abre el modal de detalles
+        const media = card.querySelector(".product-card-media");
+        const addBtn = card.querySelector(".btn-card-add");
+        
+        media.addEventListener("click", () => openProductModal(product));
+        if (addBtn && product.inStock) {
+            addBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                openProductModal(product);
+            });
+        }
+
+        DOM.productsGrid.appendChild(card);
+    });
+}
+
+// Abrir detalle del producto
+function openProductModal(product) {
+    if (!product) return;
+    
+    selectedSize = ""; // Resetear selección de talle
+    DOM.modalImg.src = product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600';
+    DOM.modalCat.textContent = product.category;
+    DOM.modalTitle.textContent = product.name;
+    DOM.modalPrice.textContent = `$${product.price.toLocaleString('es-AR')}`;
+    DOM.modalDesc.textContent = product.description;
+    
+    // Crear chips de talles
+    DOM.modalSizes.innerHTML = "";
+    if (product.sizes && Array.isArray(product.sizes) && product.sizes.length > 0) {
+        product.sizes.forEach(size => {
+            const chip = document.createElement("button");
+            chip.className = "size-chip";
+            chip.textContent = size;
+            chip.addEventListener("click", () => {
+                document.querySelectorAll(".size-chip").forEach(c => c.classList.remove("selected"));
+                chip.classList.add("selected");
+                selectedSize = size;
+            });
+            DOM.modalSizes.appendChild(chip);
+        });
+        
+        // Seleccionar automáticamente el primero
+        if (DOM.modalSizes.firstChild) {
+            DOM.modalSizes.firstChild.click();
+        }
+    } else {
+        DOM.modalSizes.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">Talle único</p>`;
+        selectedSize = "Único";
+    }
+
+    // Configurar acción de botón agregar
+    DOM.modalAddToCart.disabled = !product.inStock;
+    if (!product.inStock) {
+        DOM.modalAddToCart.textContent = "Sin Stock";
+    } else {
+        DOM.modalAddToCart.textContent = "Agregar al Carrito";
+        // Eliminar listeners previos clonando el nodo
+        const newBtn = DOM.modalAddToCart.cloneNode(true);
+        DOM.modalAddToCart.parentNode.replaceChild(newBtn, DOM.modalAddToCart);
+        DOM.modalAddToCart = newBtn;
+        
+        DOM.modalAddToCart.addEventListener("click", () => {
+            if (!selectedSize) {
+                showToast("Por favor selecciona un talle.");
+                return;
+            }
+            addToCart(product, selectedSize);
+            toggleDetailModal(false);
+        });
+    }
+
+    toggleDetailModal(true);
+}
+
+// Control de ventanas/cajones deslizables
+function toggleCartDrawer(open) {
+    if (open) {
+        DOM.cartOverlay.classList.add("open");
+        document.body.style.overflow = "hidden"; // Desactivar scroll del fondo
+    } else {
+        DOM.cartOverlay.classList.remove("open");
+        document.body.style.overflow = "";
+    }
+}
+
+function toggleDetailModal(open) {
+    if (open) {
+        DOM.modalOverlay.classList.add("open");
+        document.body.style.overflow = "hidden";
+    } else {
+        DOM.modalOverlay.classList.remove("open");
+        document.body.style.overflow = "";
+    }
+}
+
+// LÓGICA DEL CARRITO
+
+function addToCart(product, size) {
+    const existingIndex = cart.findIndex(item => item.id === product.id && item.size === size);
+    
+    if (existingIndex > -1) {
+        cart[existingIndex].quantity += 1;
+    } else {
+        cart.push({
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            image: product.image,
+            size: size,
+            quantity: 1
+        });
+    }
+    
+    saveCart();
+    updateCartUI();
+    toggleCartDrawer(true);
+    showToast(`🛍️ Agregado: ${product.name} (Talle ${size})`);
+}
+
+function updateCartQuantity(id, size, change) {
+    const index = cart.findIndex(item => item.id === id && item.size === size);
+    if (index === -1) return;
+
+    cart[index].quantity += change;
+    
+    if (cart[index].quantity <= 0) {
+        cart.splice(index, 1);
+    }
+    
+    saveCart();
+    updateCartUI();
+}
+
+function removeFromCart(id, size) {
+    cart = cart.filter(item => !(item.id === id && item.size === size));
+    saveCart();
+    updateCartUI();
+    showToast("Producto eliminado del carrito");
+}
+
+function loadCart() {
+    const localCart = localStorage.getItem("curvys_cart");
+    cart = localCart ? JSON.parse(localCart) : [];
+}
+
+function saveCart() {
+    localStorage.setItem("curvys_cart", JSON.stringify(cart));
+}
+
+// Dibujar Carrito y calcular totales
+function updateCartUI() {
+    if (!DOM.cartItems) return;
+    
+    DOM.cartItems.innerHTML = "";
+    let totalItems = 0;
+    let totalPrice = 0;
+    
+    if (cart.length === 0) {
+        DOM.cartItems.innerHTML = `
+            <div class="cart-empty">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="9" cy="21" r="1"></circle>
+                    <circle cx="20" cy="21" r="1"></circle>
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                </svg>
+                <h3>Tu carrito está vacío</h3>
+                <p>Explora nuestro catálogo exclusivo y agrega las prendas que te encanten.</p>
+            </div>
+        `;
+        // Ocultar formulario de compra
+        if (DOM.checkoutForm) DOM.checkoutForm.style.display = "none";
+    } else {
+        if (DOM.checkoutForm) DOM.checkoutForm.style.display = "flex";
+        
+        cart.forEach(item => {
+            totalItems += item.quantity;
+            totalPrice += item.price * item.quantity;
+            
+            const div = document.createElement("div");
+            div.className = "cart-item";
+            div.innerHTML = `
+                <img src="${item.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600'}" class="cart-item-img" alt="${item.name}">
+                <div class="cart-item-info">
+                    <div>
+                        <h4 class="cart-item-name">${item.name}</h4>
+                        <p class="cart-item-meta">Talle: <span>${item.size}</span></p>
+                    </div>
+                    <div class="cart-item-controls">
+                        <div class="quantity-selector">
+                            <button class="quantity-btn" onclick="updateCartQuantity('${item.id}', '${item.size}', -1)">-</button>
+                            <span class="quantity-value">${item.quantity}</span>
+                            <button class="quantity-btn" onclick="updateCartQuantity('${item.id}', '${item.size}', 1)">+</button>
+                        </div>
+                        <span class="cart-item-price">$${(item.price * item.quantity).toLocaleString('es-AR')}</span>
+                    </div>
+                </div>
+                <button class="cart-item-remove" onclick="removeFromCart('${item.id}', '${item.size}')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+            `;
+            DOM.cartItems.appendChild(div);
+        });
+    }
+    
+    // Actualizar contadores globales
+    if (DOM.cartCount) DOM.cartCount.textContent = totalItems;
+    if (DOM.cartTotal) DOM.cartTotal.textContent = `$${totalPrice.toLocaleString('es-AR')}`;
+    
+    // Exponer funciones auxiliares para que sean clickeables desde el HTML inline temporalmente
+    window.updateCartQuantity = updateCartQuantity;
+    window.removeFromCart = removeFromCart;
+}
+
+// CHECKOUT POR WHATSAPP
+async function sendWhatsAppOrder() {
+    if (cart.length === 0) return;
+    
+    // Obtener campos de contacto
+    const nombre = document.getElementById("client-name").value.trim();
+    const envio = document.getElementById("client-shipping").value;
+    const direccion = document.getElementById("client-address").value.trim();
+    const notas = document.getElementById("client-notes").value.trim();
+    
+    if (!nombre) {
+        showToast("Por favor ingresa tu nombre.");
+        return;
+    }
+    
+    if (envio === "correo" && !direccion) {
+        showToast("Por favor ingresa una dirección para el envío.");
+        return;
+    }
+
+    // Calcular el total
+    let total = 0;
+    
+    // Construir mensaje amigable
+    let mensaje = `🌸 *Pedido - Curvys Store by Moni* 🌸\n\n`;
+    mensaje += `Hola Moni! Me interesa realizar este pedido:\n`;
+    mensaje += `-----------------------------------------\n`;
+    
+    cart.forEach(item => {
+        const itemSubtotal = item.price * item.quantity;
+        total += itemSubtotal;
+        mensaje += `• *${item.quantity}x* ${item.name}\n  Talle: ${item.size} | Subtotal: $${itemSubtotal.toLocaleString('es-AR')}\n\n`;
+    });
+    
+    mensaje += `-----------------------------------------\n`;
+    mensaje += `💰 *Total del Pedido: $${total.toLocaleString('es-AR')}*\n\n`;
+    
+    mensaje += `👤 *Datos del Cliente:*\n`;
+    mensaje += `- *Nombre:* ${nombre}\n`;
+    mensaje += `- *Entrega:* ${envio === 'correo' ? '📦 Envíos a todo el país' : '🏢 Retiro en tienda'}\n`;
+    if (envio === 'correo') {
+        mensaje += `- *Dirección:* ${direccion}\n`;
+    }
+    if (notas) {
+        mensaje += `- *Notas:* ${notas}\n`;
+    }
+    
+    mensaje += `\n🛒 _Pedido generado desde la web tienda._`;
+
+    // 1. Guardar en Base de Datos (Firestore o LocalStorage)
+    const orderData = {
+        id: `ord-${Date.now()}`,
+        clientName: nombre,
+        shippingMethod: envio,
+        address: envio === 'correo' ? direccion : '',
+        notes: notas,
+        items: cart.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            size: item.size,
+            quantity: item.quantity
+        })),
+        total: total,
+        status: "Pendiente",
+        createdAt: new Date().toISOString()
+    };
+
+    try {
+        await FirebaseService.saveOrder(orderData);
+        console.log("💾 Pedido registrado con éxito en la base de datos.");
+    } catch (dbErr) {
+        console.error("⚠️ Error al registrar pedido en la base de datos:", dbErr);
+    }
+
+    // Obtener teléfono de destino (eliminar caracteres raros)
+    const phone = (storeConfig.whatsapp || "5491133224455").replace(/[^0-9]/g, "");
+    
+    // Generar url de WhatsApp moderna
+    const encodedText = encodeURIComponent(mensaje);
+    const whatsappUrl = `https://wa.me/${phone}?text=${encodedText}`;
+    
+    // Abrir enlace en nueva pestaña
+    window.open(whatsappUrl, "_blank");
+    
+    // Vaciar Carrito (opcional, recomendado post-redirección exitosa)
+    cart = [];
+    saveCart();
+    updateCartUI();
+    toggleCartDrawer(false);
+    
+    // Limpiar formulario
+    DOM.checkoutForm.reset();
+    showToast("¡Redirigiendo a WhatsApp para finalizar tu compra! 🎉");
+}
+
+// Sistema de Notificaciones Flotantes (Toasts)
+function showToast(message) {
+    let container = document.querySelector(".toast-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.className = "toast-container";
+        document.body.appendChild(container);
+    }
+    
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>${message}</span>
+    `;
+    
+    container.appendChild(toast);
+    
+    // Disparar animación
+    setTimeout(() => toast.classList.add("show"), 50);
+    
+    // Remover después de 3.5 segundos
+    setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+// Escuchar cambios en la categoría de entrega
+document.addEventListener("DOMContentLoaded", () => {
+    initApp();
+
+    const shippingSelect = document.getElementById("client-shipping");
+    const addressGroup = document.getElementById("address-group");
+    
+    if (shippingSelect && addressGroup) {
+        shippingSelect.addEventListener("change", (e) => {
+            if (e.target.value === "correo") {
+                addressGroup.style.display = "flex";
+                document.getElementById("client-address").required = true;
+            } else {
+                addressGroup.style.display = "none";
+                document.getElementById("client-address").required = false;
+                document.getElementById("client-address").value = "";
+            }
+        });
+    }
+});
+
+
+
+================================================================================
+FILE: admin-app.js
+================================================================================
+// Admin Panel Application Script - Curvys Store by Moni
+
+let allProducts = [];
+let allOrders = [];
+let settings = {};
+let currentEditingProductId = null;
+let currentUploadedImageUrl = "";
+
+// Elementos del DOM del Panel Administrador
+const DOM = {
+    // Vistas principales
+    loginSection: document.getElementById("login-section"),
+    adminDashboard: document.getElementById("admin-dashboard"),
+    
+    // Formularios de Auth
+    loginForm: document.getElementById("login-form"),
+    btnLogout: document.getElementById("btn-logout"),
+    
+    // Navegación de Pestañas
+    tabBtns: document.querySelectorAll(".admin-tab-btn"),
+    panels: document.querySelectorAll(".admin-panel"),
+    
+    // Tabla de Productos
+    productsTableBody: document.getElementById("products-table-body"),
+    ordersTableBody: document.getElementById("orders-table-body"),
+    btnNewProduct: document.getElementById("btn-new-product"),
+    
+    // Modal ABM de Producto
+    productModal: document.getElementById("admin-product-modal"),
+    modalClose: document.getElementById("admin-modal-close"),
+    productForm: document.getElementById("product-form"),
+    modalTitle: document.getElementById("admin-modal-title"),
+    btnCancelProduct: document.getElementById("btn-cancel-product"),
+    
+    // Cloudinary Drag & Drop
+    dropZone: document.getElementById("drop-zone"),
+    fileInput: document.getElementById("file-input"),
+    imagePreview: document.getElementById("image-preview"),
+    imageUrlInput: document.getElementById("prod-image-url"),
+    
+    // Categorías
+    adminCategoriesList: document.getElementById("admin-categories-list"),
+    formAddCategory: document.getElementById("form-add-category"),
+    newCategoryInput: document.getElementById("new-category-name"),
+    
+    // Configuración General
+    settingsForm: document.getElementById("settings-form"),
+    passwordChangeForm: document.getElementById("password-change-form"),
+    btnResetDb: document.getElementById("btn-reset-db")
+};
+
+// Inicialización del Panel Administrador
+function initAdmin() {
+    // 1. Escuchar el estado de autenticación
+    FirebaseService.onAuth((user) => {
+        if (user) {
+            // Usuario autenticado
+            DOM.loginSection.style.display = "none";
+            DOM.adminDashboard.style.display = "block";
+            loadDashboardData();
+        } else {
+            // No autenticado
+            DOM.loginSection.style.display = "flex";
+            DOM.adminDashboard.style.display = "none";
+        }
+    });
+
+    // 2. Registrar Listeners de Interfaz
+    registerEventListeners();
+}
+
+// Cargar información en el dashboard
+async function loadDashboardData() {
+    try {
+        console.log("📥 [Admin] Cargando datos del panel...");
+        allProducts = await FirebaseService.getProducts() || [];
+        allOrders = await FirebaseService.getOrders() || [];
+        settings = await FirebaseService.getConfig() || {};
+        
+        // Caídas de seguridad en local / sandbox
+        if (allProducts.length === 0 && window.initialProducts) {
+            allProducts = window.initialProducts;
+        }
+        if (Object.keys(settings).length === 0 && window.initialConfig) {
+            settings = window.initialConfig;
+        }
+
+        renderProductsTable();
+        renderOrdersTable();
+        renderCategoriesManager();
+        populateSettingsForm();
+        populateCategoryDropdown(); // Para el modal de productos
+    } catch (error) {
+        console.error("❌ [Admin] Error al cargar datos:", error);
+        showToast("Error al cargar datos de la base de datos.");
+    }
+}
+
+// Registrar Listeners
+function registerEventListeners() {
+    // Login Form Submit
+    if (DOM.loginForm) {
+        DOM.loginForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const email = document.getElementById("login-email").value.trim();
+            const pass = document.getElementById("login-password").value;
+            const submitBtn = DOM.loginForm.querySelector("button[type='submit']");
+            
+            try {
+                submitBtn.disabled = true;
+                submitBtn.textContent = "Iniciando sesión...";
+                await FirebaseService.login(email, pass);
+                showToast("¡Sesión iniciada con éxito! 🔑");
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || "Error al iniciar sesión.");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Ingresar al Panel";
+            }
+        });
+    }
+
+    // Logout
+    if (DOM.btnLogout) {
+        DOM.btnLogout.addEventListener("click", async () => {
+            await FirebaseService.logout();
+            showToast("Sesión cerrada.");
+        });
+    }
+
+    // Pestañas (Tabs)
+    DOM.tabBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            const target = btn.dataset.tab;
+            
+            DOM.tabBtns.forEach(b => b.classList.remove("active"));
+            DOM.panels.forEach(p => p.classList.remove("active"));
+            
+            btn.classList.add("active");
+            document.getElementById(`panel-${target}`).classList.add("active");
+        });
+    });
+
+    // Abrir Modal Nuevo Producto
+    if (DOM.btnNewProduct) {
+        DOM.btnNewProduct.addEventListener("click", () => {
+            openProductModal(null);
+        });
+    }
+
+    // Cerrar Modal Producto
+    if (DOM.modalClose) DOM.modalClose.addEventListener("click", () => toggleProductModal(false));
+    if (DOM.btnCancelProduct) DOM.btnCancelProduct.addEventListener("click", () => toggleProductModal(false));
+
+    // Guardar Producto
+    if (DOM.productForm) {
+        DOM.productForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            await saveProductForm();
+        });
+    }
+
+    // Cloudinary Drag & Drop Eventos
+    setupDragAndDrop();
+
+    // Agregar Categoría
+    if (DOM.formAddCategory) {
+        DOM.formAddCategory.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const newCat = DOM.newCategoryInput.value.trim();
+            if (!newCat) return;
+            
+            if (!settings.categories) settings.categories = [];
+            
+            if (settings.categories.includes(newCat)) {
+                showToast("La categoría ya existe.");
+                return;
+            }
+
+            settings.categories.push(newCat);
+            try {
+                await FirebaseService.saveConfig(settings);
+                DOM.newCategoryInput.value = "";
+                renderCategoriesManager();
+                populateCategoryDropdown();
+                showToast("Categoría agregada con éxito.");
+            } catch (err) {
+                console.error(err);
+                showToast("Error al guardar categoría.");
+            }
+        });
+    }
+
+    // Guardar Configuraciones Comerciales
+    if (DOM.settingsForm) {
+        DOM.settingsForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            
+            settings.storeName = document.getElementById("cfg-store-name").value.trim();
+            settings.whatsapp = document.getElementById("cfg-whatsapp").value.trim();
+            settings.instagram = document.getElementById("cfg-instagram").value.trim();
+            settings.shippingText = document.getElementById("cfg-shipping").value.trim();
+            settings.bannerText = document.getElementById("cfg-banner").value.trim();
+            
+            try {
+                await FirebaseService.saveConfig(settings);
+                showToast("⚙️ Configuración guardada con éxito.");
+            } catch (err) {
+                console.error(err);
+                showToast("Error al guardar configuraciones.");
+            }
+        });
+    }
+
+    // Guardar Cambio de Contraseña
+    if (DOM.passwordChangeForm) {
+        DOM.passwordChangeForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            
+            const newPwd = document.getElementById("pwd-new").value;
+            const confirmPwd = document.getElementById("pwd-confirm").value;
+            const submitBtn = DOM.passwordChangeForm.querySelector("button[type='submit']");
+            
+            if (newPwd !== confirmPwd) {
+                showToast("❌ Las contraseñas no coinciden.");
+                return;
+            }
+            
+            try {
+                submitBtn.disabled = true;
+                submitBtn.textContent = "Actualizando...";
+                await FirebaseService.changePassword(newPwd);
+                showToast("🔑 Contraseña actualizada. Cerrando sesión...");
+                
+                // Forzar logout seguro
+                setTimeout(async () => {
+                    await FirebaseService.logout();
+                }, 1500);
+            } catch (err) {
+                console.error(err);
+                showToast(err.message || "Error al actualizar contraseña.");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Actualizar Contraseña";
+                DOM.passwordChangeForm.reset();
+            }
+        });
+    }
+
+    // Resetear base de datos (Semilla forzada)
+    if (DOM.btnResetDb) {
+        DOM.btnResetDb.addEventListener("click", async () => {
+            if (confirm("⚠️ ¿Estás seguro de restablecer toda la base de datos? Esto borrará tus cambios actuales y cargará los productos de semilla originales.")) {
+                try {
+                    DOM.btnResetDb.disabled = true;
+                    DOM.btnResetDb.textContent = "Restableciendo...";
+                    await FirebaseService.forceResetAndSeedDatabase(window.initialProducts, window.initialConfig);
+                    showToast("✨ Base de datos restablecida correctamente.");
+                    await loadDashboardData();
+                } catch (err) {
+                    console.error(err);
+                    showToast("Error al resetear la base de datos.");
+                } finally {
+                    DOM.btnResetDb.disabled = false;
+                    DOM.btnResetDb.textContent = "Restablecer Base de Datos";
+                }
+            }
+        });
+    }
+}
+
+// RENDERIZAR TABLA DE PRODUCTOS
+function renderProductsTable() {
+    if (!DOM.productsTableBody) return;
+    
+    DOM.productsTableBody.innerHTML = "";
+    
+    if (allProducts.length === 0) {
+        DOM.productsTableBody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">
+                    No hay productos cargados en el catálogo. ¡Haz click en "Nuevo Producto" para empezar!
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    allProducts.forEach(product => {
+        const tr = document.createElement("tr");
+        
+        const tallesStr = (product.sizes && Array.isArray(product.sizes) && product.sizes.length > 0) ? product.sizes.join(", ") : "Único";
+        const stockBadge = product.inStock 
+            ? `<span style="color: #10b981; font-weight: 600;">✓ Con Stock</span>` 
+            : `<span style="color: #ef4444; font-weight: 600;">✗ Sin Stock</span>`;
+            
+        tr.innerHTML = `
+            <td>
+                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=50'}" class="admin-table-img" style="width: 50px; height: 50px; object-fit: cover;" alt="${product.name}">
+            </td>
+            <td style="font-weight: 600; color: var(--white);">${product.name}</td>
+            <td>${product.category}</td>
+            <td style="font-weight: 600;">$${product.price.toLocaleString('es-AR')}</td>
+            <td>${tallesStr}</td>
+            <td>${stockBadge}</td>
+            <td>
+                <div class="action-btns">
+                    <button class="btn-icon btn-edit" title="Editar prenda" data-id="${product.id}">
+                        <i data-lucide="edit" style="width: 15px; height: 15px;"></i>
+                    </button>
+                    <button class="btn-icon btn-icon-danger btn-delete" title="Eliminar prenda" data-id="${product.id}">
+                        <i data-lucide="trash-2" style="width: 15px; height: 15px;"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        // Click listeners
+        tr.querySelector(".btn-edit").addEventListener("click", () => openProductModal(product.id));
+        tr.querySelector(".btn-delete").addEventListener("click", async () => {
+            if (confirm("⚠️ ¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer.")) {
+                try {
+                    await FirebaseService.deleteProduct(product.id);
+                    showToast("Producto eliminado.");
+                    await loadDashboardData();
+                } catch (err) {
+                    console.error(err);
+                    showToast("Error al eliminar el producto.");
+                }
+            }
+        });
+
+        DOM.productsTableBody.appendChild(tr);
+    });
+
+    lucide.createIcons();
+}
+
+// RENDERIZAR TABLA DE PEDIDOS
+function renderOrdersTable() {
+    if (!DOM.ordersTableBody) return;
+    
+    DOM.ordersTableBody.innerHTML = "";
+    
+    if (allOrders.length === 0) {
+        DOM.ordersTableBody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 30px;">
+                    No hay pedidos registrados todavía.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    allOrders.forEach(order => {
+        const tr = document.createElement("tr");
+        
+        // Formatear fecha
+        const dateObj = new Date(order.createdAt);
+        const fechaStr = isNaN(dateObj.getTime()) ? "Fecha desconocida" : dateObj.toLocaleString('es-AR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        // Formatear items
+        const itemsHtml = order.items.map(item => 
+            `<div style="font-size: 0.8rem; margin-bottom: 2px;">
+                <strong>${item.quantity}x</strong> ${item.name} <span style="color: var(--accent); font-size: 0.75rem;">(${item.size})</span>
+             </div>`
+        ).join("");
+
+        // Dirección / Método de entrega
+        const metodoStr = order.shippingMethod === "correo" 
+            ? `📦 Correo<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${order.address}</span>` 
+            : `🏢 Taller`;
+
+        // Notas de cliente
+        const notasHtml = order.notes 
+            ? `<div style="font-size: 0.75rem; color: #fbbf24; margin-top: 4px; font-style: italic;">
+                Obs: "${order.notes}"
+               </div>`
+            : "";
+
+        // Clases de color para los estados
+        let statusStyle = "background: rgba(245, 158, 11, 0.1); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);";
+        if (order.status === "Confirmado" || order.status === "Completado" || order.status === "Entregado") {
+            statusStyle = "background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);";
+        } else if (order.status === "Cancelado") {
+            statusStyle = "background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);";
+        } else if (order.status === "Enviado") {
+            statusStyle = "background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3);";
+        }
+
+        tr.innerHTML = `
+            <td style="white-space: nowrap;">${fechaStr}</td>
+            <td>
+                <div style="font-weight: 600; color: var(--white);">${order.clientName}</div>
+                <div style="margin-top: 6px; padding: 4px 0; border-top: 1px dashed rgba(255,255,255,0.05); border-bottom: 1px dashed rgba(255,255,255,0.05);">
+                    ${itemsHtml}
+                </div>
+                ${notasHtml}
+            </td>
+            <td>${metodoStr}</td>
+            <td style="font-weight: 600; color: var(--white);">$${order.total.toLocaleString('es-AR')}</td>
+            <td>
+                <select class="form-control select-status" data-id="${order.id}" style="${statusStyle} padding: 4px 8px; font-size: 0.75rem; border-radius: 6px; width: auto; font-weight: 600;">
+                    <option value="Pendiente" ${order.status === 'Pendiente' ? 'selected' : ''}>Pendiente</option>
+                    <option value="Confirmado" ${order.status === 'Confirmado' ? 'selected' : ''}>Confirmado</option>
+                    <option value="Enviado" ${order.status === 'Enviado' ? 'selected' : ''}>Enviado</option>
+                    <option value="Entregado" ${order.status === 'Entregado' || order.status === 'Completado' ? 'selected' : ''}>Entregado</option>
+                    <option value="Cancelado" ${order.status === 'Cancelado' ? 'selected' : ''}>Cancelado</option>
+                </select>
+            </td>
+            <td>
+                <div class="action-btns">
+                    <button class="btn-icon btn-icon-danger btn-delete-order" title="Eliminar pedido" data-id="${order.id}">
+                        <i data-lucide="trash-2" style="width: 15px; height: 15px;"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        // Listener para cambiar el estado
+        const select = tr.querySelector(".select-status");
+        select.addEventListener("change", async (e) => {
+            const newStatus = e.target.value;
+            try {
+                await FirebaseService.updateOrderStatus(order.id, newStatus);
+                showToast("Estado de pedido actualizado.");
+                await loadDashboardData();
+            } catch (err) {
+                console.error(err);
+                showToast("Error al actualizar estado.");
+            }
+        });
+
+        // Listener para eliminar pedido
+        tr.querySelector(".btn-delete-order").addEventListener("click", async () => {
+            if (confirm("⚠️ ¿Estás seguro de eliminar este pedido? Esta acción no se puede deshacer.")) {
+                try {
+                    await FirebaseService.deleteOrder(order.id);
+                    showToast("Pedido eliminado.");
+                    await loadDashboardData();
+                } catch (err) {
+                    console.error(err);
+                    showToast("Error al eliminar pedido.");
+                }
+            }
+        });
+
+        DOM.ordersTableBody.appendChild(tr);
+    });
+
+    lucide.createIcons();
+}
+
+// ABRIR MODAL DE PRODUCTO (CREAR / EDITAR)
+function openProductModal(productId = null) {
+    DOM.productForm.reset();
+    currentUploadedImageUrl = "";
+    DOM.imagePreview.innerHTML = "<span>Sin Imagen</span>";
+    
+    if (productId) {
+        // Modo Edición
+        currentEditingProductId = productId;
+        DOM.modalTitle.textContent = "Editar Prenda";
+        
+        const product = allProducts.find(p => p.id === productId);
+        if (product) {
+            document.getElementById("prod-name").value = product.name || "";
+            document.getElementById("prod-description").value = product.description || "";
+            document.getElementById("prod-price").value = product.price || 0;
+            document.getElementById("prod-category").value = product.category || "";
+            document.getElementById("prod-sizes").value = (product.sizes && Array.isArray(product.sizes)) ? product.sizes.join(", ") : "";
+            document.getElementById("prod-stock").checked = !!product.inStock;
+            document.getElementById("prod-limited").checked = !!product.isLimited;
+            DOM.imageUrlInput.value = product.image || "";
+            
+            if (product.image) {
+                DOM.imagePreview.innerHTML = `<img src="${product.image}" alt="Preview">`;
+                currentUploadedImageUrl = product.image;
+            }
+        }
+    } else {
+        // Modo Crear Nuevo
+        currentEditingProductId = null;
+        DOM.modalTitle.textContent = "Agregar Nueva Prenda";
+        document.getElementById("prod-stock").checked = true;
+        document.getElementById("prod-limited").checked = true;
+    }
+    
+    toggleProductModal(true);
+}
+
+// CONTROL DEL MODAL DE DETALLE / CRUD
+function toggleProductModal(open) {
+    if (!DOM.productModal) return;
+    if (open) {
+        DOM.productModal.classList.add("open");
+        document.body.style.overflow = "hidden";
+    } else {
+        DOM.productModal.classList.remove("open");
+        document.body.style.overflow = "";
+    }
+}
+
+// GUARDAR FORMULARIO DE PRODUCTO
+async function saveProductForm() {
+    const name = document.getElementById("prod-name").value.trim();
+    const desc = document.getElementById("prod-description").value.trim();
+    const price = parseFloat(document.getElementById("prod-price").value);
+    const category = document.getElementById("prod-category").value;
+    const sizesRaw = document.getElementById("prod-sizes").value;
+    const inStock = document.getElementById("prod-stock").checked;
+    const isLimited = document.getElementById("prod-limited").checked;
+    const customUrl = DOM.imageUrlInput.value.trim();
+    
+    if (!name || isNaN(price)) {
+        showToast("Por favor completa los campos obligatorios.");
+        return;
+    }
+
+    // Procesar los talles (separados por comas)
+    const sizes = sizesRaw 
+        ? sizesRaw.split(",").map(s => s.trim().toUpperCase()).filter(s => s !== "")
+        : [];
+
+    // Fallback de imagen
+    const existingProduct = currentEditingProductId ? allProducts.find(p => p.id === currentEditingProductId) : null;
+    const finalImageUrl = currentUploadedImageUrl || customUrl || (existingProduct ? existingProduct.image : "https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600");
+
+    const productData = {
+        id: currentEditingProductId || `prod-${Date.now()}`,
+        name,
+        description: desc,
+        price,
+        category,
+        sizes,
+        image: finalImageUrl,
+        video: "",
+        inStock,
+        isLimited,
+        createdAt: existingProduct ? existingProduct.createdAt : new Date().toISOString()
+    };
+
+    try {
+        const saveBtn = DOM.productForm.querySelector("button[type='submit']");
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = "Guardando...";
+        }
+
+        await FirebaseService.saveProduct(productData);
+        
+        showToast("👗 Prenda guardada con éxito.");
+        toggleProductModal(false);
+        await loadDashboardData();
+    } catch (err) {
+        console.error(err);
+        showToast("Error al guardar el producto.");
+    }
+}
+
+// CONFIGURACIÓN DE DRAG & DROP E IMÁGENES A CLOUDINARY
+function setupDragAndDrop() {
+    if (!DOM.dropZone || !DOM.fileInput) return;
+    
+    // Abrir selector de archivos al clickear
+    DOM.dropZone.addEventListener("click", () => {
+        DOM.fileInput.click();
+    });
+
+    // Cambios en input de archivo
+    DOM.fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+            handleUploadedFile(e.target.files[0]);
+        }
+    });
+
+    // Drag-over
+    DOM.dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        DOM.dropZone.style.borderColor = "var(--accent)";
+        DOM.dropZone.style.background = "rgba(212, 175, 55, 0.05)";
+    });
+
+    // Drag-leave
+    DOM.dropZone.addEventListener("dragleave", () => {
+        DOM.dropZone.style.borderColor = "var(--border-color)";
+        DOM.dropZone.style.background = "rgba(255, 255, 255, 0.01)";
+    });
+
+    // Drop
+    DOM.dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        DOM.dropZone.style.borderColor = "var(--border-color)";
+        DOM.dropZone.style.background = "rgba(255, 255, 255, 0.01)";
+        
+        if (e.dataTransfer.files.length > 0) {
+            handleUploadedFile(e.dataTransfer.files[0]);
+        }
+    });
+}
+
+// Procesar el archivo cargado y enviarlo a Cloudinary
+async function handleUploadedFile(file) {
+    if (!file) return;
+    
+    // Validar tipo (imagen / video)
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+        showToast("Solo se permiten imágenes o videos.");
+        return;
+    }
+
+    try {
+        DOM.imagePreview.innerHTML = `
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                <div class="loader-pulse" style="width: 20px; height: 20px; border: 2.5px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                <span style="font-size: 0.65rem; color: var(--text-secondary);">Subiendo...</span>
+            </div>
+        `;
+        
+        const url = await FirebaseService.uploadImage(file);
+        
+        DOM.imagePreview.innerHTML = `<img src="${url}" alt="Preview">`;
+        DOM.imageUrlInput.value = url;
+        currentUploadedImageUrl = url;
+        showToast("¡Archivo subido exitosamente a Cloudinary! ☁️");
+    } catch (error) {
+        console.error(error);
+        DOM.imagePreview.innerHTML = "<span>Error</span>";
+        showToast("Error crítico al subir archivo a la nube.");
+    }
+}
+
+// RENDERIZAR GESTOR DE CATEGORÍAS
+function renderCategoriesManager() {
+    if (!DOM.adminCategoriesList) return;
+    
+    DOM.adminCategoriesList.innerHTML = "";
+    
+    const categories = settings.categories || [];
+    
+    if (categories.length === 0) {
+        DOM.adminCategoriesList.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">No hay categorías creadas. Agrega una arriba.</p>`;
+        return;
+    }
+
+    categories.forEach(cat => {
+        const chip = document.createElement("div");
+        chip.className = "admin-category-tag";
+        chip.innerHTML = `
+            <span>${cat}</span>
+            <button title="Borrar categoría" class="btn-delete-cat" data-name="${cat}">
+                <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+            </button>
+        `;
+        
+        chip.querySelector(".btn-delete-cat").addEventListener("click", async () => {
+            if (confirm(`¿Borrar la categoría "${cat}"? Los productos que la usan no se borrarán, pero ya no aparecerá como filtro.`)) {
+                settings.categories = settings.categories.filter(c => c !== cat);
+                try {
+                    await FirebaseService.saveConfig(settings);
+                    renderCategoriesManager();
+                    populateCategoryDropdown();
+                    showToast("Categoría eliminada.");
+                } catch (err) {
+                    console.error(err);
+                    showToast("Error al borrar categoría.");
+                }
+            }
+        });
+        DOM.adminCategoriesList.appendChild(chip);
+    });
+
+    lucide.createIcons();
+}
+
+// Rellenar formulario de configuración general
+function populateSettingsForm() {
+    if (!DOM.settingsForm) return;
+    
+    const storeNameEl = document.getElementById("cfg-store-name");
+    const whatsappEl = document.getElementById("cfg-whatsapp");
+    const instagramEl = document.getElementById("cfg-instagram");
+    const shippingEl = document.getElementById("cfg-shipping");
+    const bannerEl = document.getElementById("cfg-banner");
+    
+    if (storeNameEl) storeNameEl.value = settings.storeName || "";
+    if (whatsappEl) whatsappEl.value = settings.whatsapp || "";
+    if (instagramEl) instagramEl.value = settings.instagram || "";
+    if (shippingEl) shippingEl.value = settings.shippingText || "";
+    if (bannerEl) bannerEl.value = settings.bannerText || "";
+}
+
+// Rellenar select del modal de productos
+function populateCategoryDropdown() {
+    const select = document.getElementById("prod-category");
+    if (!select) return;
+    
+    select.innerHTML = "";
+    const categories = settings.categories || [];
+    
+    categories.forEach(cat => {
+        const option = document.createElement("option");
+        option.value = cat;
+        option.textContent = cat;
+        select.appendChild(option);
+    });
+}
+
+// Inyección de animación CSS rápida para el loader en el preview
+const style = document.createElement('style');
+style.innerHTML = `
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+`;
+document.head.appendChild(style);
+
+// Sistema de Notificaciones Flotantes (Toasts)
+function showToast(message) {
+    let container = document.querySelector(".toast-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.className = "toast-container";
+        document.body.appendChild(container);
+    }
+    
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>${message}</span>
+    `;
+    
+    container.appendChild(toast);
+    
+    setTimeout(() => toast.classList.add("show"), 50);
+    
+    setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+// Iniciar aplicación al cargar el DOM
+document.addEventListener("DOMContentLoaded", initAdmin);
+
+
+
+================================================================================
+FILE: index.html
+================================================================================
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curvys.Store by Moni - Indumentaria de Edición Limitada</title>
+    
+    <!-- Meta tags SEO -->
+    <meta name="description" content="Indumentaria femenina de diseño y edición limitada. Envíos a todo el país. Diseños únicos pensados para realzar tus curvas. ¡Sé tu propia inspiración!">
+    <meta property="og:title" content="Curvys.Store by Moni - Tienda Oficial">
+    <meta property="og:description" content="Catálogo online de ropa femenina de edición limitada. Hacé tu pedido y finalizalo por WhatsApp. Envíos a todo el país.">
+    <meta property="og:type" content="website">
+    
+    <!-- Hojas de estilo -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Lucide Icons para Iconografía Moderna -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+    <!-- Banner superior de promociones y envíos -->
+    <div class="announcement-banner">
+        <p id="banner-text">✨ Carga inicial del sitio... | Indumentaria de diseño de edición limitada ✨</p>
+    </div>
+
+    <!-- Encabezado / Header principal -->
+    <header>
+        <div class="container header-container">
+            <a href="#" class="logo">
+                <div class="logo-circle">
+                    <!-- Ícono de Red estilizado (Boutique de ropa) -->
+                    <i data-lucide="sparkles" style="color: #d4af37; width: 20px; height: 20px;"></i>
+                </div>
+                <div class="logo-text">
+                    CURVYS
+                    <span>Store by Moni</span>
+                </div>
+            </a>
+            
+            <nav class="desktop-only">
+                <a href="#catalogo" class="nav-link active">Catálogo</a>
+                <a href="#contacto" class="nav-link">Contacto</a>
+            </nav>
+            
+            <div class="header-actions">
+                <!-- Botón al Panel Administrador -->
+                <a href="admin.html" class="cart-trigger" title="Panel Administrador" aria-label="Panel Administrador">
+                    <i data-lucide="settings" style="width: 22px; height: 22px;"></i>
+                </a>
+                <!-- Trigger para el Carrito flotante -->
+                <button class="cart-trigger" id="cart-trigger" aria-label="Abrir carrito">
+                    <i data-lucide="shopping-bag" style="width: 22px; height: 22px;"></i>
+                    <span class="cart-count" id="cart-count">0</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Sección Hero de Presentación -->
+    <section class="hero">
+        <div class="container">
+            <span class="hero-subtitle">Boutique Exclusiva</span>
+            <h1 class="hero-title" id="hero-title">Curvys.Store by Moni</h1>
+            <p class="hero-desc" id="hero-desc">Indumentaria de diseño único. Confección a medida y de edición limitada.</p>
+            <div class="hero-buttons">
+                <a href="#catalogo" class="btn btn-primary">
+                    <i data-lucide="shopping-cart" style="width: 18px; height: 18px;"></i>
+                    Ver Catálogo
+                </a>
+                <a href="#" id="instagram-link" target="_blank" class="btn btn-secondary">
+                    <i data-lucide="instagram" style="width: 18px; height: 18px;"></i>
+                    Instagram
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Barra de Filtros y Búsqueda de Productos -->
+    <section class="search-filter-section" id="catalogo">
+        <div class="container search-filter-wrapper">
+            <!-- Barra de categorías deslizable horizontalmente -->
+            <div class="categories-scroll" id="categories-scroll">
+                <!-- Se inyecta dinámicamente con JS -->
+            </div>
+            
+            <!-- Buscador en tiempo real -->
+            <div class="search-box">
+                <i data-lucide="search" style="width: 18px; height: 18px;"></i>
+                <input type="text" id="search-input" placeholder="Buscar prenda...">
+            </div>
+        </div>
+    </section>
+
+    <!-- Grilla del Catálogo Oficial -->
+    <main class="catalog-section">
+        <div class="container">
+            <!-- Separador decorativo dorado -->
+            <div class="luxury-separator">
+                <div class="separator-line"></div>
+                <div class="separator-ornament">✦</div>
+                <div class="separator-line"></div>
+            </div>
+            
+            <div class="section-title-wrapper">
+                <div>
+                    <h2 class="section-title">Colección Disponible</h2>
+                    <p class="section-subtitle">Edición limitada y lanzamientos únicos</p>
+                </div>
+                <span class="product-count" id="product-count">0 productos</span>
+            </div>
+            
+            <div class="products-grid" id="products-grid">
+                <!-- Se renderizan las tarjetas de producto mediante app.js -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Cajón deslizable del Carrito de Compras (Drawer) -->
+    <div class="cart-drawer-overlay" id="cart-overlay">
+        <div class="cart-drawer">
+            <div class="cart-drawer-header">
+                <h3 class="cart-drawer-title">Tu Carrito</h3>
+                <button class="cart-drawer-close" id="cart-close" aria-label="Cerrar carrito">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            
+            <!-- Contenedor de artículos en el carrito -->
+            <div class="cart-items-container" id="cart-items">
+                <!-- Inyección dinámica con JS -->
+            </div>
+            
+            <!-- Footer del Carrito con totales y formulario de contacto -->
+            <div class="cart-drawer-footer">
+                <div class="cart-total-row">
+                    <span class="cart-total-label">Total estimado:</span>
+                    <span class="cart-total-value" id="cart-total">$0</span>
+                </div>
+                
+                <!-- Formulario de Finalización -->
+                <form id="checkout-form" class="checkout-form-container">
+                    <span class="checkout-title">Datos del Pedido</span>
+                    
+                    <div class="form-group">
+                        <label for="client-name">Nombre Completo *</label>
+                        <input type="text" id="client-name" class="form-control" placeholder="Ej. María Pérez" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="client-shipping">Método de Entrega</label>
+                        <select id="client-shipping" class="form-control">
+                            <option value="retiro">Retirar por Taller (Sin Costo)</option>
+                            <option value="correo">Envío por Correo (Todo el país)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="address-group" style="display: none;">
+                        <label for="client-address">Dirección de Envío *</label>
+                        <input type="text" id="client-address" class="form-control" placeholder="Dirección, Localidad, CP">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="client-notes">Notas / Talle personalizado</label>
+                        <textarea id="client-notes" class="form-control" rows="2" placeholder="Ej: Me gustaría el sweter en azul si es posible o talle extra..."></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="whatsapp-btn" style="width: 100%; border-radius: 8px; margin-top: 10px;">
+                        <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+                        Finalizar por WhatsApp
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Vista Detallada de Producto -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close" aria-label="Cerrar modal">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+            <div class="modal-media">
+                <img id="modal-img" src="" alt="Cargando imagen...">
+            </div>
+            <div class="modal-info">
+                <span class="modal-cat" id="modal-cat">Categoría</span>
+                <h2 class="modal-title" id="modal-title">Título del Producto</h2>
+                <div class="modal-price" id="modal-price">$0</div>
+                <p class="modal-desc" id="modal-desc">Descripción del producto...</p>
+                
+                <div class="size-selector-wrap">
+                    <h4 class="selector-label">Talles Disponibles</h4>
+                    <div class="size-chips" id="modal-sizes">
+                        <!-- Chips de talle inyectados dinámicamente -->
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button class="btn btn-primary" id="modal-add-to-cart" style="width: 100%; border-radius: 8px;">
+                        Agregar al Carrito
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pie de página / Footer -->
+    <footer id="contacto">
+        <div class="container footer-grid">
+            <div class="footer-brand">
+                <a href="#" class="logo">
+                    <div class="logo-circle">
+                        <i data-lucide="sparkles" style="color: #d4af37; width: 20px; height: 20px;"></i>
+                    </div>
+                    <div class="logo-text">
+                        CURVYS
+                        <span>Store by Moni</span>
+                    </div>
+                </a>
+                <p class="footer-desc" id="footer-about">Indumentaria de diseño único de edición limitada. Sé tu propia inspiración.</p>
+            </div>
+            
+            <div>
+                <h4 class="footer-title">Menú</h4>
+                <ul class="footer-links">
+                    <li><a href="#">Inicio</a></li>
+                    <li><a href="#catalogo">Catálogo</a></li>
+                    <li><a href="admin.html">Administrador</a></li>
+                    <li><a href="#contacto">Contacto</a></li>
+                </ul>
+            </div>
+            
+            <div>
+                <h4 class="footer-title">Redes Sociales</h4>
+                <div class="social-links">
+                    <a href="#" target="_blank" class="social-icon" id="footer-insta" aria-label="Instagram">
+                        <i data-lucide="instagram"></i>
+                    </a>
+                    <a href="#" target="_blank" class="social-icon" id="footer-whatsapp" aria-label="WhatsApp">
+                        <i data-lucide="phone"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer-bottom">
+            <div class="container">
+                <p>&copy; 2026 Curvys.Store by Moni. Todos los derechos reservados. Hecho con amor.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Firebase SDK (Versión 8 - compatible con tu estructura de Universe Celu y Marroquinería) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <!-- Controladores y Configuración -->
+    <script src="firebase-config.js"></script>
+    <script src="firebase-service.js"></script>
+    <script src="seed-data.js"></script>
+    <script src="app.js"></script>
+
+    <!-- Inicializar íconos Lucide -->
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
+
+
+
+================================================================================
+FILE: admin.html
+================================================================================
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Administrador - Curvys Store</title>
+    
+    <!-- Hojas de estilo -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body style="background-color: #050507;">
+
+    <!-- 1. Sección de Login (Se muestra si no está autenticado) -->
+    <div class="container login-container" id="login-section">
+        <div class="login-card">
+            <div class="login-logo">
+                <div class="logo-circle" style="margin-bottom: 10px;">
+                    <i data-lucide="lock" style="color: #d4af37; width: 22px; height: 22px;"></i>
+                </div>
+                <h1 class="login-title">CURVYS Store</h1>
+                <p class="login-subtitle">Gestión de Catálogo Comercial</p>
+            </div>
+            
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-email">Correo Electrónico</label>
+                    <input type="email" id="login-email" class="form-control" placeholder="admin@curvys.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Contraseña</label>
+                    <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; border-radius: 8px; margin-top: 10px;">
+                    Ingresar al Panel
+                </button>
+            </form>
+            
+            <div style="margin-top: 25px; padding: 12px; background: rgba(212, 175, 55, 0.05); border: 1px dashed var(--border-accent); border-radius: 8px; text-align: left;">
+                <p style="font-size: 0.75rem; color: var(--accent); font-weight: 600; margin-bottom: 4px;">
+                    🔑 Servidor Local Sandbox Activo:
+                </p>
+                <p style="font-size: 0.7rem; color: var(--text-secondary); line-height: 1.4;">
+                    Para probar localmente sin conectar Firebase en la nube, ingresá usando:<br>
+                    <strong>Usuario:</strong> admin@curvys.com<br>
+                    <strong>Clave:</strong> curvysadmin
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Dashboard de Administración (Se muestra tras iniciar sesión) -->
+    <div id="admin-dashboard" style="display: none;">
+        
+        <!-- Header de Administración -->
+        <header class="admin-header">
+            <div class="container admin-header-container">
+                <div class="logo">
+                    <div class="logo-circle">
+                        <i data-lucide="sliders" style="color: #d4af37; width: 20px; height: 20px;"></i>
+                    </div>
+                    <div class="logo-text">
+                        PANEL CONTROL
+                        <span>Curvys.Store</span>
+                    </div>
+                </div>
+                
+                <div class="header-actions">
+                    <a href="index.html" class="btn btn-secondary" style="padding: 8px 16px; border-radius: 8px; font-size: 0.8rem;">
+                        <i data-lucide="eye" style="width: 16px; height: 16px;"></i>
+                        Ver Tienda
+                    </a>
+                    <button class="btn btn-primary" id="btn-logout" style="padding: 8px 16px; border-radius: 8px; font-size: 0.8rem; background: #ef4444; border-color: #ef4444; box-shadow: none;">
+                        <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                        Salir
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- Pestañas de Navegación -->
+            <div class="admin-tabs">
+                <button class="admin-tab-btn active" data-tab="products">
+                    <i data-lucide="shirt" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
+                    Productos
+                </button>
+                <button class="admin-tab-btn" data-tab="orders">
+                    <i data-lucide="shopping-bag" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
+                    Pedidos
+                </button>
+                <button class="admin-tab-btn" data-tab="categories">
+                    <i data-lucide="tags" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
+                    Categorías
+                </button>
+                <button class="admin-tab-btn" data-tab="settings">
+                    <i data-lucide="settings" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
+                    Configuración
+                </button>
+            </div>
+
+            <!-- CONTENIDOS DE LAS PESTAÑAS -->
+
+            <!-- Panel 1: Productos -->
+            <div class="admin-panel active" id="panel-products">
+                <div class="admin-card">
+                    <div class="admin-card-title">
+                        <h2>Catálogo de Prendas</h2>
+                        <button class="btn btn-primary" id="btn-new-product" style="padding: 8px 16px; border-radius: 8px; font-size: 0.85rem;">
+                            <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+                            Nueva Prenda
+                        </button>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Imagen</th>
+                                    <th>Nombre</th>
+                                    <th>Categoría</th>
+                                    <th>Precio</th>
+                                    <th>Talles</th>
+                                    <th>Stock</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="products-table-body">
+                                <!-- Filas inyectadas mediante admin-app.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 2: Pedidos -->
+            <div class="admin-panel" id="panel-orders">
+                <div class="admin-card">
+                    <div class="admin-card-title">
+                        <h2>Historial de Pedidos</h2>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Cliente</th>
+                                    <th>Método Entrega</th>
+                                    <th>Total</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orders-table-body">
+                                <!-- Filas inyectadas mediante admin-app.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 3: Categorías -->
+            <div class="admin-panel" id="panel-categories">
+                <div class="admin-card">
+                    <div class="admin-card-title">
+                        <h2>Gestor de Categorías</h2>
+                    </div>
+                    
+                    <form id="form-add-category" style="display: flex; gap: 10px; max-width: 500px; margin-bottom: 25px;">
+                        <input type="text" id="new-category-name" class="form-control" placeholder="Ej: Calzas" required>
+                        <button type="submit" class="btn btn-primary" style="padding: 10px 20px; border-radius: 8px; font-size: 0.85rem;">
+                            Agregar
+                        </button>
+                    </form>
+
+                    <h4 class="selector-label" style="margin-bottom: 12px;">Categorías Creadas</h4>
+                    <div class="admin-category-list" id="admin-categories-list">
+                        <!-- Chips de categorías cargados con JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 4: Configuración y Ajustes -->
+            <div class="admin-panel" id="panel-settings">
+                <div class="admin-card">
+                    <div class="admin-card-title">
+                        <h2>Configuración General de la Tienda</h2>
+                    </div>
+                    
+                    <form id="settings-form" style="display: flex; flex-direction: column; gap: 20px; max-width: 600px;">
+                        <div class="form-group">
+                            <label for="cfg-store-name">Nombre Comercial de la Tienda *</label>
+                            <input type="text" id="cfg-store-name" class="form-control" placeholder="Ej: Curvys.Store by Moni" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="cfg-whatsapp">Número de WhatsApp de Destino (para compras) *</label>
+                            <input type="text" id="cfg-whatsapp" class="form-control" placeholder="Ej: 5491133224455" required>
+                            <span class="form-help">Ingresar código de país y código de área sin el 15. Ej: 5491133224455.</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="cfg-instagram">Perfil de Instagram (URL completa)</label>
+                            <input type="url" id="cfg-instagram" class="form-control" placeholder="https://www.instagram.com/curvys.store_by_moni">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="cfg-shipping">Mensaje Informativo de Envío</label>
+                            <input type="text" id="cfg-shipping" class="form-control" placeholder="Ej: Envíos a todo el país">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="cfg-banner">Mensaje del Banner Superior de Promociones</label>
+                            <input type="text" id="cfg-banner" class="form-control" placeholder="Ej: ✨ ¡Sé tu propia inspiración! ✨">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" style="width: fit-content; padding: 12px 30px; border-radius: 8px; align-self: flex-start;">
+                            <i data-lucide="save" style="width: 18px; height: 18px;"></i>
+                            Guardar Cambios
+                        </button>
+                    </form>
+                </div>
+                
+                <!-- Cambio de Contraseña -->
+                <div class="admin-card">
+                    <div class="admin-card-title">
+                        <h2>Cambiar Contraseña de Administrador</h2>
+                    </div>
+                    
+                    <form id="password-change-form" style="display: flex; flex-direction: column; gap: 20px; max-width: 600px;">
+                        <div class="form-group">
+                            <label for="pwd-new">Nueva Contraseña *</label>
+                            <input type="password" id="pwd-new" class="form-control" placeholder="Nueva contraseña de administrador" minlength="6" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pwd-confirm">Confirmar Nueva Contraseña *</label>
+                            <input type="password" id="pwd-confirm" class="form-control" placeholder="Repite la nueva contraseña" minlength="6" required>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" style="width: fit-content; padding: 12px 30px; border-radius: 8px; align-self: flex-start; background: #3b82f6; border-color: #3b82f6; box-shadow: none;">
+                            <i data-lucide="key" style="width: 18px; height: 18px;"></i>
+                            Actualizar Contraseña
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Ajustes de base de datos / Mantenimiento -->
+                <div class="admin-card" style="border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.02);">
+                    <div class="admin-card-title" style="border-color: rgba(239, 68, 68, 0.1);">
+                        <h2 style="color: #ef4444;">Zona de Mantenimiento</h2>
+                    </div>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;">
+                        ¿Necesitas restablecer la tienda a su catálogo inicial para demostración? Esta opción eliminará todos los cambios en productos y configuraciones hechos hasta ahora y reinstalará los datos de prueba oficiales.
+                    </p>
+                    <button class="btn" id="btn-reset-db" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1.5px solid rgba(239, 68, 68, 0.3); padding: 10px 20px; border-radius: 8px;">
+                        <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                        Restablecer Base de Datos
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Modal de Creación / Edición de Producto (ABM) -->
+    <div class="modal-overlay" id="admin-product-modal">
+        <div class="modal-content" style="max-width: 650px; grid-template-columns: 1fr;">
+            <button class="modal-close" id="admin-modal-close" aria-label="Cerrar modal">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+            
+            <div class="modal-admin-form">
+                <h3 class="modal-title" id="admin-modal-title" style="margin-bottom: 20px;">Agregar Nueva Prenda</h3>
+                
+                <form id="product-form" style="display: flex; flex-direction: column; gap: 15px;">
+                    <div class="form-group">
+                        <label for="prod-name">Nombre de la Prenda *</label>
+                        <input type="text" id="prod-name" class="form-control" placeholder="Ej: Sweter Lanilla" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="prod-description">Descripción / Detalles *</label>
+                        <textarea id="prod-description" class="form-control" rows="3" placeholder="Detalles de la tela, diseño y corte..." required></textarea>
+                    </div>
+
+                    <div class="form-row form-row-3">
+                        <div class="form-group">
+                            <label for="prod-price">Precio ($ARS) *</label>
+                            <input type="number" id="prod-price" class="form-control" placeholder="18500" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="prod-category">Categoría *</label>
+                            <select id="prod-category" class="form-control" required>
+                                <!-- Categorías cargadas dinámicamente -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="prod-sizes">Talles Disponibles</label>
+                            <input type="text" id="prod-sizes" class="form-control" placeholder="S, M, L, XL">
+                            <span class="form-help">Separar por comas. Dejar vacío si es talle único.</span>
+                        </div>
+                    </div>
+
+                    <!-- Botones de estado (Stock, Limitado) -->
+                    <div class="form-row form-row-2">
+                        <div class="switch-group">
+                            <div class="switch-label">
+                                <span class="switch-title">Stock Disponible</span>
+                                <span class="switch-desc">Habilitar compra</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="prod-stock">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="switch-group">
+                            <div class="switch-label">
+                                <span class="switch-title">Edición Limitada</span>
+                                <span class="switch-desc">Badge destacado</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="prod-limited">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Subida de imagen con Cloudinary -->
+                    <div class="form-group">
+                        <label>Foto de la Prenda</label>
+                        <div class="image-upload-wrapper">
+                            <!-- Preview Box -->
+                            <div class="image-preview-box" id="image-preview">
+                                <span>Sin Imagen</span>
+                            </div>
+                            
+                            <!-- Uploader Zone -->
+                            <div class="drop-zone" id="drop-zone">
+                                <i data-lucide="upload-cloud" style="color: var(--accent); width: 32px; height: 32px;"></i>
+                                <p>Arrastrá la imagen aquí o haz click para seleccionar</p>
+                                <span>Formatos admitidos: JPG, PNG, WEBP</span>
+                                <input type="file" id="file-input" accept="image/*,video/*">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Campo URL directo en caso de fallback -->
+                    <div class="form-group">
+                        <label for="prod-image-url">Enlace directo de la imagen (Opcional)</label>
+                        <input type="url" id="prod-image-url" class="form-control" placeholder="https://images.unsplash.com/... (si querés pegar un link externo)">
+                    </div>
+
+                    <!-- Botones Footer -->
+                    <div class="modal-admin-form-footer">
+                        <button type="button" class="btn btn-secondary" id="btn-cancel-product" style="padding: 10px 20px; border-radius: 8px;">
+                            Cancelar
+                        </button>
+                        <button type="submit" class="btn btn-primary" style="padding: 10px 25px; border-radius: 8px;">
+                            Guardar Prenda
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK (Versión 8 - para compatibilidad) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+
+    <!-- Scripts del Administrador -->
+    <script src="firebase-config.js"></script>
+    <script src="firebase-service.js"></script>
+    <script src="seed-data.js"></script>
+    <script src="admin-app.js"></script>
+
+    <!-- Inicializar Lucide -->
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
+
+
+
+================================================================================
+FILE: style.css
+================================================================================
+/* Global Stylesheet - Curvys Store by Moni */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --bg-primary: #0a0a0c;
+    --bg-secondary: #121216;
+    --bg-card: #15151b;
+    --bg-card-hover: #1c1c24;
+    
+    --accent: #d4af37;
+    --accent-hover: #e5c158;
+    --accent-dark: #b8952b;
+    --accent-glow: rgba(212, 175, 55, 0.15);
+    
+    --text-primary: #f3f4f6;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --white: #ffffff;
+    
+    --border-color: rgba(255, 255, 255, 0.06);
+    --border-accent: rgba(212, 175, 55, 0.25);
+    
+    --font-serif: 'Cormorant Garamond', serif;
+    --font-sans: 'Montserrat', sans-serif;
+    
+    --transition-smooth: 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 10px 25px rgba(0, 0, 0, 0.7);
+    --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(212, 175, 55, 0.08);
+}
+
+/* Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+button, input, select, textarea {
+    font-family: inherit;
+}
+
+/* Layout Utilities */
+.container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+/* Banner superior */
+.announcement-banner {
+    background: linear-gradient(90deg, #0a0a0c, var(--accent-dark), #0a0a0c);
+    color: var(--white);
+    text-align: center;
+    padding: 12px 10px;
+    font-family: var(--font-serif);
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    border-bottom: 1px solid var(--border-accent);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.announcement-banner p {
+    display: inline-block;
+    animation: marquee 30s linear infinite;
+}
+
+@keyframes marquee {
+    0% { transform: translate3d(100%, 0, 0); }
+    100% { transform: translate3d(-100%, 0, 0); }
+}
+
+/* Sticky Header */
+header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10, 10, 12, 0.85);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border-bottom: 1px solid var(--border-color);
+    transition: var(--transition-smooth);
+}
+
+.header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 80px;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo-circle {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #121216;
+    border: 1.5px solid var(--accent);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 0 15px var(--accent-glow);
+}
+
+.logo-img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+.logo-text {
+    font-family: var(--font-serif);
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    background: linear-gradient(135deg, var(--white) 30%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    line-height: 1;
+}
+
+.logo-text span {
+    font-size: 0.75rem;
+    font-family: var(--font-sans);
+    font-weight: 300;
+    display: block;
+    color: var(--text-secondary);
+    letter-spacing: 0.18em;
+    margin-top: 4px;
+}
+
+nav {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.nav-link {
+    font-size: 0.9rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    transition: var(--transition-smooth);
+    padding: 8px 16px;
+    border-radius: 20px;
+}
+
+.nav-link:hover, .nav-link.active {
+    color: var(--accent);
+    background: rgba(212, 175, 55, 0.06);
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+/* Cart Icon Trigger */
+.cart-trigger {
+    background: none;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    padding: 10px;
+    color: var(--text-primary);
+    transition: var(--transition-smooth);
+    display: flex;
+    align-items: center;
+}
+
+.cart-trigger:hover {
+    color: var(--accent);
+    transform: scale(1.08);
+}
+
+.cart-count {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: var(--accent);
+    color: var(--bg-primary);
+    font-size: 0.7rem;
+    font-weight: 700;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 0 10px rgba(212,175,55,0.4);
+}
+
+/* Hero Section */
+.hero {
+    position: relative;
+    padding: 100px 0 80px;
+    text-align: center;
+    background: radial-gradient(circle at 50% 50%, rgba(212, 175, 55, 0.08) 0%, rgba(10, 10, 12, 0.6) 70%, #0a0a0c 100%),
+                linear-gradient(180deg, rgba(18, 18, 22, 0.5) 0%, #0a0a0c 100%);
+    border-bottom: 1px solid var(--border-color);
+    overflow: hidden;
+}
+
+.hero::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: radial-gradient(rgba(212, 175, 55, 0.15) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.25;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.hero-subtitle {
+    font-size: 0.9rem;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 25px;
+    font-weight: 500;
+    display: inline-block;
+    position: relative;
+    z-index: 1;
+}
+
+.hero-subtitle::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 15%;
+    width: 70%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+
+.hero-title {
+    font-family: var(--font-serif);
+    font-size: 4.5rem;
+    font-weight: 500;
+    margin-bottom: 20px;
+    letter-spacing: 0.15em;
+    color: var(--white);
+    position: relative;
+    z-index: 1;
+    text-shadow: 0 4px 20px rgba(0,0,0,0.6);
+}
+
+@media (max-width: 768px) {
+    .hero-title {
+        font-size: 2.8rem;
+        letter-spacing: 0.1em;
+    }
+}
+
+.hero-desc {
+    font-size: 1.15rem;
+    color: var(--text-secondary);
+    max-width: 650px;
+    margin: 0 auto 35px;
+    font-weight: 300;
+    position: relative;
+    z-index: 1;
+}
+
+.hero-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    position: relative;
+    z-index: 1;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px 34px;
+    border-radius: 30px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+    position: relative;
+    z-index: 1;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent) 0%, #b8952b 100%);
+    color: var(--bg-primary);
+    border: none;
+    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.15), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, var(--accent-hover) 0%, var(--accent) 100%);
+    box-shadow: 0 8px 25px rgba(212, 175, 55, 0.35);
+    transform: translateY(-3px);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-primary);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    backdrop-filter: blur(5px);
+}
+
+.btn-secondary:hover {
+    background: rgba(212, 175, 55, 0.08);
+    border-color: var(--accent);
+    color: var(--white);
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(212, 175, 55, 0.1);
+}
+
+/* Search and Filters */
+.search-filter-section {
+    padding: 40px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.search-filter-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 25px;
+}
+
+.search-box {
+    position: relative;
+    width: 100%;
+    max-width: 350px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 14px 20px 14px 48px;
+    background: var(--bg-secondary);
+    border: 1.5px solid var(--border-color);
+    border-radius: 30px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
+    transition: var(--transition-smooth);
+}
+
+.search-box input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.12);
+    background: var(--bg-card);
+}
+
+.search-box svg {
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.categories-scroll {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    margin-right: -20px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.categories-scroll::-webkit-scrollbar {
+    height: 4px;
+}
+
+.categories-scroll::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+.category-btn {
+    background: var(--bg-secondary);
+    border: 1.5px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 10px 24px;
+    border-radius: 30px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: var(--transition-smooth);
+}
+
+.category-btn:hover {
+    border-color: var(--accent);
+    color: var(--white);
+}
+
+.category-btn.active {
+    background: linear-gradient(135deg, var(--accent) 0%, #b8952b 100%);
+    color: var(--bg-primary);
+    border-color: var(--accent);
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(212, 175, 55, 0.2);
+}
+
+/* luxury-separator */
+.luxury-separator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    margin: 10px auto 50px;
+    max-width: 450px;
+}
+
+.luxury-separator .separator-line {
+    flex-grow: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+
+.luxury-separator .separator-ornament {
+    color: var(--accent);
+    font-size: 1rem;
+    line-height: 1;
+    text-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* Product Catalog Grid */
+.catalog-section {
+    padding: 50px 0;
+}
+
+.section-title-wrapper {
+    margin-bottom: 35px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.section-title {
+    font-family: var(--font-serif);
+    font-size: 2.2rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--white);
+}
+
+.section-subtitle {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    font-weight: 300;
+}
+
+.product-count {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 30px;
+}
+
+/* Product Card */
+.product-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+    position: relative;
+}
+
+.product-card:hover {
+    transform: translateY(-10px);
+    border-color: var(--accent);
+    background: var(--bg-card-hover);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 20px rgba(212, 175, 55, 0.15);
+}
+
+.product-card-media {
+    position: relative;
+    width: 100%;
+    padding-top: 125%; /* 4:5 Aspect Ratio for Portrait Clothing Images */
+    overflow: hidden;
+    background: #000;
+}
+
+.product-card-img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.8s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+.product-card:hover .product-card-img {
+    transform: scale(1.08);
+}
+
+/* Premium overlay zoom effect on media box */
+.product-card-media::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(212, 175, 55, 0.12); /* Golden semi-transparent overlay */
+    z-index: 1;
+    opacity: 0;
+    transition: var(--transition-smooth);
+}
+
+.product-card-media::after {
+    content: 'Ver Detalles ✧';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -30%);
+    background: rgba(10, 10, 12, 0.95);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 8px 18px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    z-index: 2;
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    pointer-events: none;
+}
+
+.product-card:hover .product-card-media::before {
+    opacity: 1;
+}
+
+.product-card:hover .product-card-media::after {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+}
+
+/* Badges */
+.card-badges {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 3;
+}
+
+.badge {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.badge-limited {
+    background: var(--accent);
+    color: var(--bg-primary);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    box-shadow: 0 3px 10px rgba(212, 175, 55, 0.35);
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+.badge-outofstock {
+    background: rgba(0, 0, 0, 0.85);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 20px;
+    padding: 6px 14px;
+    letter-spacing: 0.05em;
+}
+
+.product-card-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.product-card-cat {
+    font-size: 0.75rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 5px;
+    letter-spacing: 0.05em;
+}
+
+.product-card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--white);
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.product-card-desc {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 15px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-weight: 300;
+    flex-grow: 1;
+}
+
+.product-card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: auto;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-accent);
+}
+
+.product-card-price {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-shadow: 0 0 10px rgba(212, 175, 55, 0.1);
+}
+
+.btn-card-add {
+    background: none;
+    border: 1.5px solid var(--border-color);
+    color: var(--text-primary);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.btn-card-add:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
+    border-color: var(--accent);
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.35);
+}
+
+/* Cart Drawer (Deslizable Lateral) */
+.cart-drawer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+}
+
+.cart-drawer-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.cart-drawer {
+    position: fixed;
+    top: 0;
+    right: -450px;
+    width: 100%;
+    max-width: 450px;
+    height: 100%;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg);
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cart-drawer-overlay.open .cart-drawer {
+    right: 0;
+}
+
+.cart-drawer-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cart-drawer-title {
+    font-family: var(--font-serif);
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.cart-drawer-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    transition: var(--transition-smooth);
+}
+
+.cart-drawer-close:hover {
+    color: var(--accent);
+    transform: rotate(90deg);
+}
+
+.cart-items-container {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Empty Cart View */
+.cart-empty {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    height: 100%;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+}
+
+.cart-empty svg {
+    color: var(--border-accent);
+    margin-bottom: 15px;
+}
+
+.cart-empty p {
+    font-size: 0.95rem;
+    margin-bottom: 20px;
+}
+
+/* Cart Item Layout */
+.cart-item {
+    display: flex;
+    gap: 15px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px;
+    position: relative;
+}
+
+.cart-item-img {
+    width: 70px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 8px;
+    background: #000;
+}
+
+.cart-item-info {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.cart-item-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--white);
+    padding-right: 20px;
+}
+
+.cart-item-meta {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 4px 0;
+}
+
+.cart-item-meta span {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.cart-item-price {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--white);
+}
+
+.cart-item-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.quantity-selector {
+    display: flex;
+    align-items: center;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 15px;
+    padding: 2px;
+}
+
+.quantity-btn {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    width: 26px;
+    height: 26px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-radius: 50%;
+}
+
+.quantity-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--accent);
+}
+
+.quantity-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    width: 30px;
+    text-align: center;
+}
+
+.cart-item-remove {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.cart-item-remove:hover {
+    color: #ef4444;
+}
+
+/* Cart Checkout Footer */
+.cart-drawer-footer {
+    padding: 20px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.cart-total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.cart-total-label {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.cart-total-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--white);
+}
+
+/* Checkout Form inside Drawer */
+.checkout-form-container {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px dashed var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.checkout-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 4px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form-group label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.form-control {
+    background: var(--bg-card);
+    border: 1.5px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    outline: none;
+    transition: var(--transition-smooth);
+    width: 100%;
+}
+
+.form-control:focus {
+    border-color: var(--accent);
+}
+
+select.form-control {
+    cursor: pointer;
+}
+
+/* Detail Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    padding: 20px;
+}
+
+.modal-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-content {
+    background: var(--bg-secondary);
+    border: 1.5px solid var(--border-color);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 800px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr;
+    box-shadow: var(--shadow-lg);
+    animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes zoomIn {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+@media (min-width: 768px) {
+    .modal-content {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.modal-close {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: rgba(0, 0, 0, 0.5);
+    border: none;
+    color: var(--white);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    z-index: 10;
+    transition: var(--transition-smooth);
+}
+
+.modal-close:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
+    transform: rotate(90deg);
+}
+
+.modal-media {
+    position: relative;
+    width: 100%;
+    padding-top: 120%;
+    background: #000;
+}
+
+@media (min-width: 768px) {
+    .modal-media {
+        height: 100%;
+        padding-top: 0;
+    }
+}
+
+.modal-img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.modal-info {
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-cat {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+}
+
+.modal-title {
+    font-family: var(--font-serif);
+    font-size: 1.8rem;
+    color: var(--white);
+    margin-bottom: 12px;
+    line-height: 1.2;
+}
+
+.modal-price {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: 20px;
+}
+
+.modal-desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 25px;
+    font-weight: 300;
+}
+
+/* Modal Selector Sizes */
+.size-selector-wrap {
+    margin-bottom: 25px;
+}
+
+.selector-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
+.size-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.size-chip {
+    background: var(--bg-card);
+    border: 1.5px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.size-chip:hover {
+    border-color: var(--text-secondary);
+}
+
+.size-chip.selected {
+    background: var(--accent);
+    color: var(--bg-primary);
+    border-color: var(--accent);
+}
+
+.modal-actions {
+    margin-top: auto;
+}
+
+/* Footer Section */
+footer {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--accent);
+    padding: 60px 0 30px;
+    margin-top: 80px;
+    position: relative;
+}
+
+footer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 150px;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 0 0 3px 3px;
+    box-shadow: 0 2px 10px var(--accent-glow);
+}
+
+.footer-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 40px;
+    margin-bottom: 50px;
+}
+
+@media (min-width: 768px) {
+    .footer-grid {
+        grid-template-columns: 2fr 1fr 1fr;
+    }
+}
+
+.footer-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.footer-desc {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    max-width: 320px;
+    font-weight: 300;
+}
+
+.footer-title {
+    font-family: var(--font-serif);
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: var(--white);
+    letter-spacing: 0.05em;
+}
+
+.footer-links {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.footer-links a {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    transition: var(--transition-smooth);
+}
+
+.footer-links a:hover {
+    color: var(--accent);
+    padding-left: 5px;
+}
+
+.social-links {
+    display: flex;
+    gap: 15px;
+}
+
+.social-icon {
+    background: var(--bg-card);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    transition: var(--transition-smooth);
+}
+
+.social-icon:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
+    transform: translateY(-2px);
+}
+
+.footer-bottom {
+    text-align: center;
+    padding-top: 30px;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.toast {
+    background: var(--bg-card);
+    border: 1.5px solid var(--accent);
+    color: var(--white);
+    padding: 12px 24px;
+    border-radius: 30px;
+    box-shadow: var(--shadow-md);
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateY(0) translateX(0);
+}
+
+/* Admin Dashboard Styles */
+.admin-header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 15px 0;
+}
+
+.admin-header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.admin-title {
+    font-family: var(--font-serif);
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--white);
+}
+
+.admin-tabs {
+    display: flex;
+    gap: 10px;
+    margin: 30px 0;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1px;
+}
+
+.admin-tab-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    padding: 12px 20px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+    position: relative;
+    transition: var(--transition-smooth);
+}
+
+.admin-tab-btn:hover {
+    color: var(--text-primary);
+}
+
+.admin-tab-btn.active {
+    color: var(--accent);
+}
+
+.admin-tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--accent);
+}
+
+.admin-panel {
+    display: none;
+}
+
+.admin-panel.active {
+    display: block;
+}
+
+.admin-card {
+    background: var(--bg-card);
+    border: 1.5px solid var(--border-color);
+    border-radius: 16px;
+    padding: 25px;
+    margin-bottom: 30px;
+    box-shadow: var(--shadow-md);
+}
+
+.admin-card-title {
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Admin Table */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.85rem;
+}
+
+.admin-table th {
+    background: rgba(255, 255, 255, 0.02);
+    padding: 15px;
+    font-weight: 600;
+    border-bottom: 1.5px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.admin-table td {
+    padding: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    vertical-align: middle;
+}
+
+.admin-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.01);
+}
+
+.admin-table-img {
+    width: 45px;
+    height: 55px;
+    object-fit: cover;
+    border-radius: 4px;
+    background: #000;
+}
+
+.action-btns {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.btn-icon:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn-icon-danger:hover {
+    color: #ef4444;
+    border-color: #ef4444;
+}
+
+/* File Upload Area */
+.image-upload-wrapper {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+}
+
+@media (min-width: 600px) {
+    .image-upload-wrapper {
+        grid-template-columns: 100px 1fr;
+    }
+}
+
+.image-preview-box {
+    width: 100px;
+    height: 125px;
+    border: 1.5px dashed var(--border-color);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+.image-preview-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.image-preview-box span {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 5px;
+}
+
+.drop-zone {
+    border: 1.5px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 25px;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    background: rgba(255, 255, 255, 0.01);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.drop-zone:hover {
+    border-color: var(--accent);
+    background: rgba(212, 175, 55, 0.02);
+}
+
+.drop-zone svg {
+    color: var(--text-secondary);
+}
+
+.drop-zone p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.drop-zone span {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.drop-zone input {
+    display: none;
+}
+
+/* Login Card */
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--bg-card);
+    border: 1.5px solid var(--border-color);
+    border-radius: 20px;
+    padding: 40px 30px;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+}
+
+.login-logo {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.login-title {
+    font-family: var(--font-serif);
+    font-size: 1.5rem;
+    color: var(--white);
+    margin-bottom: 8px;
+}
+
+.login-subtitle {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 25px;
+}
+
+.login-card form {
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Toggle Switch */
+.switch-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    padding: 12px 16px;
+    border-radius: 8px;
+}
+
+.switch-label {
+    display: flex;
+    flex-direction: column;
+}
+
+.switch-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--white);
+}
+
+.switch-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: var(--text-secondary);
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--accent);
+}
+
+input:checked + .slider:before {
+    transform: translateX(24px);
+    background-color: var(--bg-primary);
+}
+
+/* Form Helper text */
+.form-help {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+}
+
+/* Category Manager tag chips list */
+.admin-category-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.admin-category-tag {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+}
+
+.admin-category-tag button {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: var(--transition-smooth);
+}
+
+.admin-category-tag button:hover {
+    color: #ef4444;
+}
+
+/* Modal Form styling (Create/Edit Product) */
+.modal-admin-form {
+    padding: 25px;
+}
+
+.modal-admin-form-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 25px;
+    padding-top: 15px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Responsive grid for forms */
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+}
+
+@media (min-width: 600px) {
+    .form-row-2 {
+        grid-template-columns: 1fr 1fr;
+    }
+    .form-row-3 {
+        grid-template-columns: 1fr 1fr 1fr;
+    }
+}
+
+
+
+================================================================================
+INSTRUCTIONS & RULES: Firebase & Storage Configuration
+================================================================================
+# Manual de Configuración de Firebase
+
+Esta guía explica paso a paso cómo obtener y configurar las credenciales necesarias en tu archivo [firebase-config.js](file:///c:/Users/aleba/OneDrive/Documentos/Proyectos/curvys-store/firebase-config.js) para llevar tu tienda a producción utilizando Firebase Firestore (para base de datos) y Firebase Storage (para almacenar las fotos).
+
+---
+
+## Parte 1: Configurar Firebase
+
+### Paso 1: Crear el proyecto en Firebase Console
+1. Entra a la [Consola de Firebase](https://console.firebase.google.com/) e inicia sesión con tu cuenta de Google.
+2. Haz clic en el botón **Agregar proyecto** (o *Crear un proyecto*).
+3. Escribe el nombre de tu proyecto (por ejemplo: `Curvys Store`) y haz clic en **Continuar**.
+4. En el paso de Google Analytics, puedes desactivarlo si deseas una configuración más rápida, y haz clic en **Crear proyecto**. Espera a que cargue y presiona **Continuar**.
+
+---
+
+### Paso 2: Registrar una aplicación Web
+1. En la pantalla principal de tu proyecto (el Panel de Control), haz clic en el icono web **`</>`** (debajo del texto *"Comienza agregando Firebase a tu app"*).
+2. Ponle un nombre de registro a tu app (ejemplo: `curvys-web`) y haz clic en **Registrar app**.
+3. Te aparecerá un bloque de código con un objeto llamado `firebaseConfig`. Copia cada uno de esos valores y pégalos en tu archivo [firebase-config.js](file:///c:/Users/aleba/OneDrive/Documentos/Proyectos/curvys-store/firebase-config.js):
+   - `apiKey` ➡️ `apiKey`
+   - `authDomain` ➡️ `authDomain`
+   - `projectId` ➡️ `projectId`
+   - `storageBucket` ➡️ `storageBucket`
+   - `messagingSenderId` ➡️ `messagingSenderId`
+   - `appId` ➡️ `appId`
+
+---
+
+### Paso 3: Habilitar Firestore Database
+1. En el menú de navegación izquierdo de la consola de Firebase, haz clic en **Compilación** (Build) y selecciona **Firestore Database**.
+2. Haz clic en el botón **Crear base de datos**.
+3. Selecciona la ubicación del servidor (ej. `us-central` para América Latina) y haz clic en **Siguiente**.
+4. Selecciona **Iniciar en modo de producción** (las reglas seguras las configuraremos en el Paso 5) y presiona **Habilitar**.
+
+---
+
+### Paso 4: Habilitar Autenticación y Crear Usuario Administrador
+1. En el menú izquierdo, haz clic en **Compilación** (Build) y selecciona **Authentication**.
+2. Haz clic en **Comenzar** (Get Started).
+3. En la pestaña *Método de inicio de sesión*, selecciona **Correo electrónico/contraseña**, actívalo (solo la primera opción: *Habilitar*) y presiona **Guardar**.
+4. Ve a la pestaña **Users** (Usuarios) en la parte superior.
+5. Haz clic en **Agregar usuario**.
+6. Introduce el correo: `admin@curvys.com` y escribe una contraseña segura de administrador. Apúntala bien y presiona **Agregar usuario**.
+
+---
+
+### Paso 5: Configurar las Reglas de Seguridad en Firestore
+1. Vuelve a **Firestore Database** en el menú izquierdo.
+2. Haz clic en la pestaña **Reglas** (Rules) en la parte superior.
+3. Reemplaza el bloque de código de reglas existente por el siguiente (para que cualquiera pueda ver los productos/ajustes pero solo el administrador autenticado pueda modificar datos o leer los pedidos):
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Colecciones de lectura pública y escritura solo para el administrador
+    match /products/{document} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /settings/{document} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    // Colección de pedidos: cualquiera puede crear (escribir) un pedido al comprar, 
+    // pero solo el administrador autenticado puede verlos (leer) o editarlos.
+    match /orders/{document} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null;
+    }
+  }
+}
+```
+4. Haz clic en el botón **Publicar** para activar las reglas.
+
+---
+
+### Paso 6: Habilitar y Configurar Firebase Storage (Fotos)
+1. En el menú de navegación izquierdo, ve a **Compilación** (Build) y selecciona **Storage**.
+2. Haz clic en **Comenzar**.
+3. Selecciona **Iniciar en modo de prueba** (esto creará reglas temporales abiertas) y haz clic en **Siguiente**.
+4. Selecciona la ubicación geográfica (puedes dejar la misma que Firestore) y haz clic en **Listo**.
+5. Una vez creado el bucket de almacenamiento, haz clic en la pestaña **Reglas** (Rules) de la parte superior.
+6. Reemplaza las reglas actuales con las siguientes (permite que todo el público vea las fotos del catálogo pero restringe la subida/modificación exclusivamente al administrador autenticado):
+
+```javascript
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}
+```
+7. Haz clic en **Publicar** para activar las reglas de Storage.
+
+
+

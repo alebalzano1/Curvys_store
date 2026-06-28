@@ -1,6 +1,7 @@
 // Admin Panel Application Script - Curvys Store by Moni
 
 let allProducts = [];
+let allOrders = [];
 let settings = {};
 let currentEditingProductId = null;
 let currentUploadedImageUrl = "";
@@ -21,6 +22,7 @@ const DOM = {
     
     // Tabla de Productos
     productsTableBody: document.getElementById("products-table-body"),
+    ordersTableBody: document.getElementById("orders-table-body"),
     btnNewProduct: document.getElementById("btn-new-product"),
     
     // Modal ABM de Producto
@@ -43,6 +45,7 @@ const DOM = {
     
     // Configuración General
     settingsForm: document.getElementById("settings-form"),
+    passwordChangeForm: document.getElementById("password-change-form"),
     btnResetDb: document.getElementById("btn-reset-db")
 };
 
@@ -71,6 +74,7 @@ async function loadDashboardData() {
     try {
         console.log("📥 [Admin] Cargando datos del panel...");
         allProducts = await FirebaseService.getProducts() || [];
+        allOrders = await FirebaseService.getOrders() || [];
         settings = await FirebaseService.getConfig() || {};
         
         // Caídas de seguridad en local / sandbox
@@ -82,6 +86,7 @@ async function loadDashboardData() {
         }
 
         renderProductsTable();
+        renderOrdersTable();
         renderCategoriesManager();
         populateSettingsForm();
         populateCategoryDropdown(); // Para el modal de productos
@@ -208,6 +213,41 @@ function registerEventListeners() {
         });
     }
 
+    // Guardar Cambio de Contraseña
+    if (DOM.passwordChangeForm) {
+        DOM.passwordChangeForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            
+            const newPwd = document.getElementById("pwd-new").value;
+            const confirmPwd = document.getElementById("pwd-confirm").value;
+            const submitBtn = DOM.passwordChangeForm.querySelector("button[type='submit']");
+            
+            if (newPwd !== confirmPwd) {
+                showToast("❌ Las contraseñas no coinciden.");
+                return;
+            }
+            
+            try {
+                submitBtn.disabled = true;
+                submitBtn.textContent = "Actualizando...";
+                await FirebaseService.changePassword(newPwd);
+                showToast("🔑 Contraseña actualizada. Cerrando sesión...");
+                
+                // Forzar logout seguro
+                setTimeout(async () => {
+                    await FirebaseService.logout();
+                }, 1500);
+            } catch (err) {
+                console.error(err);
+                showToast(err.message || "Error al actualizar contraseña.");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Actualizar Contraseña";
+                DOM.passwordChangeForm.reset();
+            }
+        });
+    }
+
     // Resetear base de datos (Semilla forzada)
     if (DOM.btnResetDb) {
         DOM.btnResetDb.addEventListener("click", async () => {
@@ -250,19 +290,19 @@ function renderProductsTable() {
     allProducts.forEach(product => {
         const tr = document.createElement("tr");
         
-        const tallesStr = product.sizes && product.sizes.length > 0 ? product.sizes.join(", ") : "Único";
+        const tallesStr = (product.sizes && Array.isArray(product.sizes) && product.sizes.length > 0) ? product.sizes.join(", ") : "Único";
         const stockBadge = product.inStock 
             ? `<span style="color: #10b981; font-weight: 600;">✓ Con Stock</span>` 
             : `<span style="color: #ef4444; font-weight: 600;">✗ Sin Stock</span>`;
             
         tr.innerHTML = `
             <td>
-                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=60'}" class="admin-table-img" alt="${product.name}">
+                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=50'}" class="admin-table-img" style="width: 50px; height: 50px; object-fit: cover;" alt="${product.name}">
             </td>
             <td style="font-weight: 600; color: var(--white);">${product.name}</td>
             <td>${product.category}</td>
-            <td>${tallesStr}</td>
             <td style="font-weight: 600;">$${product.price.toLocaleString('es-AR')}</td>
+            <td>${tallesStr}</td>
             <td>${stockBadge}</td>
             <td>
                 <div class="action-btns">
@@ -277,8 +317,19 @@ function renderProductsTable() {
         `;
 
         // Click listeners
-        tr.querySelector(".btn-edit").addEventListener("click", () => openProductModal(product));
-        tr.querySelector(".btn-delete").addEventListener("click", () => deleteProduct(product.id));
+        tr.querySelector(".btn-edit").addEventListener("click", () => openProductModal(product.id));
+        tr.querySelector(".btn-delete").addEventListener("click", async () => {
+            if (confirm("⚠️ ¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer.")) {
+                try {
+                    await FirebaseService.deleteProduct(product.id);
+                    showToast("Producto eliminado.");
+                    await loadDashboardData();
+                } catch (err) {
+                    console.error(err);
+                    showToast("Error al eliminar el producto.");
+                }
+            }
+        });
 
         DOM.productsTableBody.appendChild(tr);
     });
@@ -286,39 +337,154 @@ function renderProductsTable() {
     lucide.createIcons();
 }
 
-// CONTROL DEL MODAL DE DETALLE / CRUD
-function toggleProductModal(open) {
-    if (open) {
-        DOM.productModal.classList.add("open");
-        document.body.style.overflow = "hidden";
-    } else {
-        DOM.productModal.classList.remove("open");
-        document.body.style.overflow = "";
+// RENDERIZAR TABLA DE PEDIDOS
+function renderOrdersTable() {
+    if (!DOM.ordersTableBody) return;
+    
+    DOM.ordersTableBody.innerHTML = "";
+    
+    if (allOrders.length === 0) {
+        DOM.ordersTableBody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 30px;">
+                    No hay pedidos registrados todavía.
+                </td>
+            </tr>
+        `;
+        return;
     }
+
+    allOrders.forEach(order => {
+        const tr = document.createElement("tr");
+        
+        // Formatear fecha
+        const dateObj = new Date(order.createdAt);
+        const fechaStr = isNaN(dateObj.getTime()) ? "Fecha desconocida" : dateObj.toLocaleString('es-AR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        // Formatear items
+        const itemsHtml = order.items.map(item => 
+            `<div style="font-size: 0.8rem; margin-bottom: 2px;">
+                <strong>${item.quantity}x</strong> ${item.name} <span style="color: var(--accent); font-size: 0.75rem;">(${item.size})</span>
+             </div>`
+        ).join("");
+
+        // Dirección / Método de entrega
+        const metodoStr = order.shippingMethod === "correo" 
+            ? `📦 Correo<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${order.address}</span>` 
+            : `🏢 Taller`;
+
+        // Notas de cliente
+        const notasHtml = order.notes 
+            ? `<div style="font-size: 0.75rem; color: #fbbf24; margin-top: 4px; font-style: italic;">
+                Obs: "${order.notes}"
+               </div>`
+            : "";
+
+        // Clases de color para los estados
+        let statusStyle = "background: rgba(245, 158, 11, 0.1); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);";
+        if (order.status === "Confirmado" || order.status === "Completado" || order.status === "Entregado") {
+            statusStyle = "background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);";
+        } else if (order.status === "Cancelado") {
+            statusStyle = "background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);";
+        } else if (order.status === "Enviado") {
+            statusStyle = "background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3);";
+        }
+
+        tr.innerHTML = `
+            <td style="white-space: nowrap;">${fechaStr}</td>
+            <td>
+                <div style="font-weight: 600; color: var(--white);">${order.clientName}</div>
+                <div style="margin-top: 6px; padding: 4px 0; border-top: 1px dashed rgba(255,255,255,0.05); border-bottom: 1px dashed rgba(255,255,255,0.05);">
+                    ${itemsHtml}
+                </div>
+                ${notasHtml}
+            </td>
+            <td>${metodoStr}</td>
+            <td style="font-weight: 600; color: var(--white);">$${order.total.toLocaleString('es-AR')}</td>
+            <td>
+                <select class="form-control select-status" data-id="${order.id}" style="${statusStyle} padding: 4px 8px; font-size: 0.75rem; border-radius: 6px; width: auto; font-weight: 600;">
+                    <option value="Pendiente" ${order.status === 'Pendiente' ? 'selected' : ''}>Pendiente</option>
+                    <option value="Confirmado" ${order.status === 'Confirmado' ? 'selected' : ''}>Confirmado</option>
+                    <option value="Enviado" ${order.status === 'Enviado' ? 'selected' : ''}>Enviado</option>
+                    <option value="Entregado" ${order.status === 'Entregado' || order.status === 'Completado' ? 'selected' : ''}>Entregado</option>
+                    <option value="Cancelado" ${order.status === 'Cancelado' ? 'selected' : ''}>Cancelado</option>
+                </select>
+            </td>
+            <td>
+                <div class="action-btns">
+                    <button class="btn-icon btn-icon-danger btn-delete-order" title="Eliminar pedido" data-id="${order.id}">
+                        <i data-lucide="trash-2" style="width: 15px; height: 15px;"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        // Listener para cambiar el estado
+        const select = tr.querySelector(".select-status");
+        select.addEventListener("change", async (e) => {
+            const newStatus = e.target.value;
+            try {
+                await FirebaseService.updateOrderStatus(order.id, newStatus);
+                showToast("Estado de pedido actualizado.");
+                await loadDashboardData();
+            } catch (err) {
+                console.error(err);
+                showToast("Error al actualizar estado.");
+            }
+        });
+
+        // Listener para eliminar pedido
+        tr.querySelector(".btn-delete-order").addEventListener("click", async () => {
+            if (confirm("⚠️ ¿Estás seguro de eliminar este pedido? Esta acción no se puede deshacer.")) {
+                try {
+                    await FirebaseService.deleteOrder(order.id);
+                    showToast("Pedido eliminado.");
+                    await loadDashboardData();
+                } catch (err) {
+                    console.error(err);
+                    showToast("Error al eliminar pedido.");
+                }
+            }
+        });
+
+        DOM.ordersTableBody.appendChild(tr);
+    });
+
+    lucide.createIcons();
 }
 
-function openProductModal(product = null) {
+// ABRIR MODAL DE PRODUCTO (CREAR / EDITAR)
+function openProductModal(productId = null) {
     DOM.productForm.reset();
     currentUploadedImageUrl = "";
     DOM.imagePreview.innerHTML = "<span>Sin Imagen</span>";
     
-    if (product) {
+    if (productId) {
         // Modo Edición
-        currentEditingProductId = product.id;
+        currentEditingProductId = productId;
         DOM.modalTitle.textContent = "Editar Prenda";
         
-        document.getElementById("prod-name").value = product.name;
-        document.getElementById("prod-desc").value = product.description;
-        document.getElementById("prod-price").value = product.price;
-        document.getElementById("prod-category").value = product.category;
-        document.getElementById("prod-sizes").value = product.sizes ? product.sizes.join(", ") : "";
-        document.getElementById("prod-stock").checked = product.inStock;
-        document.getElementById("prod-limited").checked = product.isLimited;
-        DOM.imageUrlInput.value = product.image || "";
-        
-        if (product.image) {
-            DOM.imagePreview.innerHTML = `<img src="${product.image}" alt="Preview">`;
-            currentUploadedImageUrl = product.image;
+        const product = allProducts.find(p => p.id === productId);
+        if (product) {
+            document.getElementById("prod-name").value = product.name || "";
+            document.getElementById("prod-description").value = product.description || "";
+            document.getElementById("prod-price").value = product.price || 0;
+            document.getElementById("prod-category").value = product.category || "";
+            document.getElementById("prod-sizes").value = (product.sizes && Array.isArray(product.sizes)) ? product.sizes.join(", ") : "";
+            document.getElementById("prod-stock").checked = !!product.inStock;
+            document.getElementById("prod-limited").checked = !!product.isLimited;
+            DOM.imageUrlInput.value = product.image || "";
+            
+            if (product.image) {
+                DOM.imagePreview.innerHTML = `<img src="${product.image}" alt="Preview">`;
+                currentUploadedImageUrl = product.image;
+            }
         }
     } else {
         // Modo Crear Nuevo
@@ -331,10 +497,22 @@ function openProductModal(product = null) {
     toggleProductModal(true);
 }
 
+// CONTROL DEL MODAL DE DETALLE / CRUD
+function toggleProductModal(open) {
+    if (!DOM.productModal) return;
+    if (open) {
+        DOM.productModal.classList.add("open");
+        document.body.style.overflow = "hidden";
+    } else {
+        DOM.productModal.classList.remove("open");
+        document.body.style.overflow = "";
+    }
+}
+
 // GUARDAR FORMULARIO DE PRODUCTO
 async function saveProductForm() {
     const name = document.getElementById("prod-name").value.trim();
-    const desc = document.getElementById("prod-desc").value.trim();
+    const desc = document.getElementById("prod-description").value.trim();
     const price = parseFloat(document.getElementById("prod-price").value);
     const category = document.getElementById("prod-category").value;
     const sizesRaw = document.getElementById("prod-sizes").value;
@@ -352,7 +530,9 @@ async function saveProductForm() {
         ? sizesRaw.split(",").map(s => s.trim().toUpperCase()).filter(s => s !== "")
         : [];
 
-    const finalImageUrl = customUrl || currentUploadedImageUrl || "https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600";
+    // Fallback de imagen
+    const existingProduct = currentEditingProductId ? allProducts.find(p => p.id === currentEditingProductId) : null;
+    const finalImageUrl = currentUploadedImageUrl || customUrl || (existingProduct ? existingProduct.image : "https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600");
 
     const productData = {
         id: currentEditingProductId || `prod-${Date.now()}`,
@@ -365,13 +545,15 @@ async function saveProductForm() {
         video: "",
         inStock,
         isLimited,
-        createdAt: new Date().toISOString()
+        createdAt: existingProduct ? existingProduct.createdAt : new Date().toISOString()
     };
 
     try {
         const saveBtn = DOM.productForm.querySelector("button[type='submit']");
-        saveBtn.disabled = true;
-        saveBtn.textContent = "Guardando...";
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = "Guardando...";
+        }
 
         await FirebaseService.saveProduct(productData);
         
@@ -382,93 +564,6 @@ async function saveProductForm() {
         console.error(err);
         showToast("Error al guardar el producto.");
     }
-}
-
-// ELIMINAR PRODUCTO
-async function deleteProduct(id) {
-    if (confirm("⚠️ ¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer.")) {
-        try {
-            await FirebaseService.deleteProduct(id);
-            showToast("Producto eliminado.");
-            await loadDashboardData();
-        } catch (err) {
-            console.error(err);
-            showToast("Error al eliminar el producto.");
-        }
-    }
-}
-
-// RENDERIZAR GESTOR DE CATEGORÍAS
-function renderCategoriesManager() {
-    if (!DOM.adminCategoriesList) return;
-    
-    DOM.adminCategoriesList.innerHTML = "";
-    
-    const categories = settings.categories || [];
-    
-    if (categories.length === 0) {
-        DOM.adminCategoriesList.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">No hay categorías creadas. Agrega una arriba.</p>`;
-        return;
-    }
-
-    categories.forEach(cat => {
-        const chip = document.createElement("div");
-        chip.className = "admin-category-tag";
-        chip.innerHTML = `
-            <span>${cat}</span>
-            <button title="Borrar categoría" class="btn-delete-cat" data-name="${cat}">
-                <i data-lucide="x" style="width: 14px; height: 14px;"></i>
-            </button>
-        `;
-        
-        chip.querySelector(".btn-delete-cat").addEventListener("click", () => deleteCategory(cat));
-        DOM.adminCategoriesList.appendChild(chip);
-    });
-
-    lucide.createIcons();
-}
-
-// ELIMINAR CATEGORÍA
-async function deleteCategory(categoryName) {
-    if (confirm(`¿Borrar la categoría "${categoryName}"? Los productos que la usan no se borrarán, pero ya no aparecerá como filtro.`)) {
-        settings.categories = settings.categories.filter(c => c !== categoryName);
-        try {
-            await FirebaseService.saveConfig(settings);
-            renderCategoriesManager();
-            populateCategoryDropdown();
-            showToast("Categoría eliminada.");
-        } catch (err) {
-            console.error(err);
-            showToast("Error al borrar categoría.");
-        }
-    }
-}
-
-// Rellenar select del modal de productos
-function populateCategoryDropdown() {
-    const select = document.getElementById("prod-category");
-    if (!select) return;
-    
-    select.innerHTML = "";
-    const categories = settings.categories || [];
-    
-    categories.forEach(cat => {
-        const option = document.createElement("option");
-        option.value = cat;
-        option.textContent = cat;
-        select.appendChild(option);
-    });
-}
-
-// Rellenar formulario de configuración general
-function populateSettingsForm() {
-    if (!DOM.settingsForm) return;
-    
-    document.getElementById("cfg-store-name").value = settings.storeName || "";
-    document.getElementById("cfg-whatsapp").value = settings.whatsapp || "";
-    document.getElementById("cfg-instagram").value = settings.instagram || "";
-    document.getElementById("cfg-shipping").value = settings.shippingText || "";
-    document.getElementById("cfg-banner").value = settings.bannerText || "";
 }
 
 // CONFIGURACIÓN DE DRAG & DROP E IMÁGENES A CLOUDINARY
@@ -541,6 +636,82 @@ async function handleUploadedFile(file) {
         DOM.imagePreview.innerHTML = "<span>Error</span>";
         showToast("Error crítico al subir archivo a la nube.");
     }
+}
+
+// RENDERIZAR GESTOR DE CATEGORÍAS
+function renderCategoriesManager() {
+    if (!DOM.adminCategoriesList) return;
+    
+    DOM.adminCategoriesList.innerHTML = "";
+    
+    const categories = settings.categories || [];
+    
+    if (categories.length === 0) {
+        DOM.adminCategoriesList.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">No hay categorías creadas. Agrega una arriba.</p>`;
+        return;
+    }
+
+    categories.forEach(cat => {
+        const chip = document.createElement("div");
+        chip.className = "admin-category-tag";
+        chip.innerHTML = `
+            <span>${cat}</span>
+            <button title="Borrar categoría" class="btn-delete-cat" data-name="${cat}">
+                <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+            </button>
+        `;
+        
+        chip.querySelector(".btn-delete-cat").addEventListener("click", async () => {
+            if (confirm(`¿Borrar la categoría "${cat}"? Los productos que la usan no se borrarán, pero ya no aparecerá como filtro.`)) {
+                settings.categories = settings.categories.filter(c => c !== cat);
+                try {
+                    await FirebaseService.saveConfig(settings);
+                    renderCategoriesManager();
+                    populateCategoryDropdown();
+                    showToast("Categoría eliminada.");
+                } catch (err) {
+                    console.error(err);
+                    showToast("Error al borrar categoría.");
+                }
+            }
+        });
+        DOM.adminCategoriesList.appendChild(chip);
+    });
+
+    lucide.createIcons();
+}
+
+// Rellenar formulario de configuración general
+function populateSettingsForm() {
+    if (!DOM.settingsForm) return;
+    
+    const storeNameEl = document.getElementById("cfg-store-name");
+    const whatsappEl = document.getElementById("cfg-whatsapp");
+    const instagramEl = document.getElementById("cfg-instagram");
+    const shippingEl = document.getElementById("cfg-shipping");
+    const bannerEl = document.getElementById("cfg-banner");
+    
+    if (storeNameEl) storeNameEl.value = settings.storeName || "";
+    if (whatsappEl) whatsappEl.value = settings.whatsapp || "";
+    if (instagramEl) instagramEl.value = settings.instagram || "";
+    if (shippingEl) shippingEl.value = settings.shippingText || "";
+    if (bannerEl) bannerEl.value = settings.bannerText || "";
+}
+
+// Rellenar select del modal de productos
+function populateCategoryDropdown() {
+    const select = document.getElementById("prod-category");
+    if (!select) return;
+    
+    select.innerHTML = "";
+    const categories = settings.categories || [];
+    
+    categories.forEach(cat => {
+        const option = document.createElement("option");
+        option.value = cat;
+        option.textContent = cat;
+        select.appendChild(option);
+    });
 }
 
 // Inyección de animación CSS rápida para el loader en el preview
