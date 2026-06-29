@@ -9,7 +9,12 @@ const initialProducts = [
         category: "Abrigos",
         sizes: ["L", "XL", "XXL"],
         image: "https://images.unsplash.com/photo-1574169208507-84376144848b?q=80&w=800&auto=format&fit=crop",
-        video: "",
+        images: [
+            "https://images.unsplash.com/photo-1574169208507-84376144848b?q=80&w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1608231387042-66d1773070a5?q=80&w=800&auto=format&fit=crop"
+        ],
+        video: "https://assets.mixkit.co/videos/preview/mixkit-fashion-woman-with-a-silver-jacket-vertical-40292-large.mp4",
         inStock: true,
         isLimited: true,
         createdAt: new Date().toISOString()
@@ -22,6 +27,10 @@ const initialProducts = [
         category: "Blusas",
         sizes: ["M", "L", "XL"],
         image: "https://images.unsplash.com/photo-1608231387042-66d1773070a5?q=80&w=800&auto=format&fit=crop",
+        images: [
+            "https://images.unsplash.com/photo-1608231387042-66d1773070a5?q=80&w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1574169208507-84376144848b?q=80&w=800&auto=format&fit=crop"
+        ],
         video: "",
         inStock: true,
         isLimited: true,
@@ -35,6 +44,10 @@ const initialProducts = [
         category: "Abrigos",
         sizes: ["L", "XL", "XXL", "XXXL"],
         image: "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?q=80&w=800&auto=format&fit=crop",
+        images: [
+            "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?q=80&w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=800&auto=format&fit=crop"
+        ],
         video: "",
         inStock: true,
         isLimited: false,
@@ -48,6 +61,9 @@ const initialProducts = [
         category: "Pantalones",
         sizes: ["44", "46", "48", "50", "52"],
         image: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=800&auto=format&fit=crop",
+        images: [
+            "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=800&auto=format&fit=crop"
+        ],
         video: "",
         inStock: true,
         isLimited: true,
@@ -61,7 +77,27 @@ const initialConfig = {
     instagram: "https://www.instagram.com/curvys.store_by_moni",
     shippingText: "Envíos a todo el país",
     bannerText: "✨ Indumentaria de edición limitada — ¡Sé tu propia inspiración! ✨",
-    categories: ["Abrigos", "Blusas", "Pantalones", "Remeras", "Accesorios"]
+    categories: ["Abrigos", "Blusas", "Pantalones", "Remeras", "Accesorios"],
+    
+    // Tarifas de Envío por defecto
+    shippingRates: {
+        retiro: 0,
+        moto: 1500,
+        correo: 3500
+    },
+    
+    // Cupones de descuento activos
+    coupons: {
+        "CURVYS10": 10,  // 10% descuento
+        "BIENVENIDA": 15  // 15% descuento
+    },
+    
+    // Diapositivas para el Hero Slider
+    heroSlides: [
+        "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1600",
+        "https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=1600",
+        "https://images.unsplash.com/photo-1490114538077-0a7f8cb49891?q=80&w=1600"
+    ]
 };
 
 // Exportar para uso en otros scripts

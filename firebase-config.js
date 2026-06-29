@@ -2,7 +2,7 @@
 // Si deseas conectar una base de datos real en la nube, reemplaza los valores de abajo
 // con las credenciales de tu proyecto de Firebase.
 const firebaseConfig = {
-    apiKey: "AIzaSyAzeR8fE833nUlmgMFmOPqp7ry5rXtqZFQ",
+    apiKey: "",
     authDomain: "curvys.firebaseapp.com",
     projectId: "curvys",
     storageBucket: "curvys.firebasestorage.app",

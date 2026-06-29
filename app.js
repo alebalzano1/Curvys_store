@@ -7,6 +7,17 @@ let cart = [];
 let activeCategory = "Todos";
 let searchQuery = "";
 let selectedSize = "";
+let currentProductImages = [];
+let currentImageIndex = 0;
+
+// Variables de las nuevas características
+let currentTheme = "dark";
+let activeFavoritesFilter = false;
+let activeCoupon = null; // Almacenará { code: "CURVYS10", percent: 10 }
+let sizeGuideVisible = false;
+let selectedShippingMethod = "retiro";
+let favoritesList = [];
+let currentSort = "default";
 
 // Referencias a elementos del DOM
 const DOM = {
@@ -14,6 +25,7 @@ const DOM = {
     categoriesScroll: document.getElementById("categories-scroll"),
     productCount: document.getElementById("product-count"),
     searchInput: document.getElementById("search-input"),
+    sortSelect: document.getElementById("sort-select"),
     
     // Carrito
     cartOverlay: document.getElementById("cart-overlay"),
@@ -22,6 +34,19 @@ const DOM = {
     cartItems: document.getElementById("cart-items"),
     cartCount: document.getElementById("cart-count"),
     cartTotal: document.getElementById("cart-total"),
+    
+    // Desglose del Carrito
+    cartSubtotal: document.getElementById("cart-subtotal"),
+    cartDiscountRow: document.getElementById("cart-discount-row"),
+    cartDiscountPercent: document.getElementById("cart-discount-percent"),
+    cartDiscountVal: document.getElementById("cart-discount-val"),
+    cartShippingVal: document.getElementById("cart-shipping-val"),
+    shippingCostLabel: document.getElementById("shipping-cost-label"),
+    
+    // Cupones en el Carrito
+    couponInput: document.getElementById("coupon-input"),
+    btnApplyCoupon: document.getElementById("btn-apply-coupon"),
+    couponMessage: document.getElementById("coupon-message"),
     
     // Formulario de Compra
     checkoutForm: document.getElementById("checkout-form"),
@@ -37,6 +62,27 @@ const DOM = {
     modalDesc: document.getElementById("modal-desc"),
     modalSizes: document.getElementById("modal-sizes"),
     modalAddToCart: document.getElementById("modal-add-to-cart"),
+
+    // Guía de Talles
+    btnSizeGuide: document.getElementById("btn-size-guide"),
+    sizeGuideContainer: document.getElementById("size-guide-container"),
+    sizeGuideRows: document.getElementById("size-guide-rows"),
+
+    // Carrusel y Video
+    carouselContainer: document.getElementById("modal-carousel-container"),
+    carouselTrack: document.getElementById("modal-carousel-track"),
+    carouselPrev: document.getElementById("carousel-prev"),
+    carouselNext: document.getElementById("carousel-next"),
+    carouselIndicators: document.getElementById("carousel-indicators"),
+    videoBadge: document.getElementById("modal-video-badge"),
+    videoContainer: document.getElementById("modal-video-container"),
+    videoElement: document.getElementById("modal-video"),
+    videoCloseBtn: document.getElementById("modal-video-close"),
+    
+    // Nuevos Elementos Tienda
+    themeToggle: document.getElementById("theme-toggle"),
+    heroSlidesContainer: document.getElementById("hero-slides-container"),
+    favFilterBtn: document.getElementById("fav-filter-btn"),
     
     // Banner e Información General
     bannerText: document.getElementById("banner-text"),
@@ -54,8 +100,9 @@ async function initApp() {
     try {
         console.log("🚀 [App] Inicializando tienda...");
         
-        // Cargar Carrito desde LocalStorage
+        // Cargar Carrito y Favoritos
         loadCart();
+        loadFavorites();
 
         // Obtener datos del servicio de base de datos
         products = await FirebaseService.getProducts();
@@ -71,6 +118,10 @@ async function initApp() {
 
         // Configurar UI con datos del negocio
         applyStoreConfig();
+        initTheme();
+
+        // Iniciar Slider
+        startHeroSlider();
 
         // Renderizar Categorías y Productos
         renderCategories();
@@ -88,6 +139,8 @@ async function initApp() {
         products = window.initialProducts || [];
         storeConfig = window.initialConfig || {};
         applyStoreConfig();
+        initTheme();
+        startHeroSlider();
         renderCategories();
         renderProducts();
         updateCartUI();
@@ -119,6 +172,14 @@ function registerEventListeners() {
         });
     }
 
+    // Ordenador
+    if (DOM.sortSelect) {
+        DOM.sortSelect.addEventListener("change", (e) => {
+            currentSort = e.target.value;
+            renderProducts();
+        });
+    }
+
     // Carrito Trigger
     if (DOM.cartTrigger) {
         DOM.cartTrigger.addEventListener("click", () => toggleCartDrawer(true));
@@ -146,6 +207,140 @@ function registerEventListeners() {
         });
     }
 
+    // Carrusel Prev/Next
+    if (DOM.carouselPrev) {
+        DOM.carouselPrev.addEventListener("click", () => {
+            if (currentProductImages.length > 1) {
+                currentImageIndex = (currentImageIndex - 1 + currentProductImages.length) % currentProductImages.length;
+                updateCarousel();
+            }
+        });
+    }
+    if (DOM.carouselNext) {
+        DOM.carouselNext.addEventListener("click", () => {
+            if (currentProductImages.length > 1) {
+                currentImageIndex = (currentImageIndex + 1) % currentProductImages.length;
+                updateCarousel();
+            }
+        });
+    }
+
+    // Toggle de Video y Fotos en Modal
+    if (DOM.videoBadge) {
+        DOM.videoBadge.addEventListener("click", () => {
+            if (DOM.videoElement && DOM.videoElement.src) {
+                DOM.carouselContainer.style.display = "none";
+                DOM.videoContainer.style.display = "block";
+                DOM.videoElement.play().catch(err => console.log("Auto-play blocked or error: ", err));
+            }
+        });
+    }
+    if (DOM.videoCloseBtn) {
+        DOM.videoCloseBtn.addEventListener("click", () => {
+            closeVideoPlayer();
+        });
+    }
+
+    // Tema Claro/Oscuro Toggle
+    if (DOM.themeToggle) {
+        DOM.themeToggle.addEventListener("click", () => {
+            const nextTheme = currentTheme === "dark" ? "light" : "dark";
+            setTheme(nextTheme);
+            showToast(`Tema cambiado a ${nextTheme === 'light' ? 'Claro (Luxe Sand)' : 'Oscuro'}`);
+        });
+    }
+
+    // Filtro de Favoritos
+    if (DOM.favFilterBtn) {
+        DOM.favFilterBtn.addEventListener("click", () => {
+            activeFavoritesFilter = !activeFavoritesFilter;
+            if (activeFavoritesFilter) {
+                DOM.favFilterBtn.classList.add("active");
+                // Desactivar clase activa en botones de categorías comunes
+                document.querySelectorAll(".category-btn:not(.fav-filter-btn)").forEach(b => b.classList.remove("active"));
+            } else {
+                DOM.favFilterBtn.classList.remove("active");
+                // Volver a activar categoría seleccionada
+                const catBtns = document.querySelectorAll(".category-btn:not(.fav-filter-btn)");
+                catBtns.forEach(btn => {
+                    if (btn.textContent === activeCategory) btn.classList.add("active");
+                });
+            }
+            renderProducts();
+        });
+    }
+
+    // Guía de Talles Toggle
+    if (DOM.btnSizeGuide) {
+        DOM.btnSizeGuide.addEventListener("click", () => {
+            sizeGuideVisible = !sizeGuideVisible;
+            if (sizeGuideVisible) {
+                DOM.sizeGuideContainer.style.display = "block";
+                DOM.btnSizeGuide.textContent = "Ocultar Tabla";
+                renderSizeGuide();
+            } else {
+                DOM.sizeGuideContainer.style.display = "none";
+                DOM.btnSizeGuide.textContent = "Guía de Talles";
+            }
+        });
+    }
+
+    // Aplicar Cupón
+    if (DOM.btnApplyCoupon) {
+        DOM.btnApplyCoupon.addEventListener("click", () => {
+            const code = DOM.couponInput.value.trim().toUpperCase();
+            if (!code) {
+                activeCoupon = null;
+                DOM.couponMessage.textContent = "";
+                updateCartUI();
+                return;
+            }
+            
+            const coupons = storeConfig.coupons || {};
+            if (coupons[code] !== undefined) {
+                activeCoupon = { code: code, percent: coupons[code] };
+                DOM.couponMessage.textContent = `✓ ¡Cupón ${code} aplicado! (${coupons[code]}% OFF)`;
+                DOM.couponMessage.style.color = "#10b981";
+                showToast(`🎟️ Cupón aplicado: ${coupons[code]}% de descuento`);
+            } else {
+                activeCoupon = null;
+                DOM.couponMessage.textContent = "✗ Código de cupón inválido";
+                DOM.couponMessage.style.color = "#ef4444";
+            }
+            updateCartUI();
+        });
+    }
+
+    // Cambios en Método de Entrega
+    const shippingSelect = document.getElementById("client-shipping");
+    const addressGroup = document.getElementById("address-group");
+    if (shippingSelect) {
+        shippingSelect.addEventListener("change", (e) => {
+            selectedShippingMethod = e.target.value;
+            
+            // Mostrar u ocultar campo de dirección
+            if (selectedShippingMethod === "correo") {
+                if (addressGroup) addressGroup.style.display = "flex";
+                document.getElementById("client-address").required = true;
+            } else {
+                if (addressGroup) addressGroup.style.display = "none";
+                document.getElementById("client-address").required = false;
+                document.getElementById("client-address").value = "";
+            }
+            
+            // Actualizar etiqueta del costo de envío
+            const rates = storeConfig.shippingRates || { retiro: 0, moto: 1500, correo: 3500 };
+            const cost = rates[selectedShippingMethod] || 0;
+            if (DOM.shippingCostLabel) {
+                DOM.shippingCostLabel.textContent = cost > 0 
+                    ? `Envío: $${cost.toLocaleString('es-AR')}`
+                    : `Envío: Gratis`;
+            }
+            
+            updateCartUI();
+        });
+    }
+
     // Finalizar compra (WhatsApp Checkout)
     if (DOM.checkoutForm) {
         DOM.checkoutForm.addEventListener("submit", (e) => {
@@ -164,13 +359,18 @@ function renderCategories() {
     
     categories.forEach(cat => {
         const btn = document.createElement("button");
-        btn.className = `category-btn ${cat === activeCategory ? 'active' : ''}`;
+        btn.className = `category-btn ${cat === activeCategory && !activeFavoritesFilter ? 'active' : ''}`;
         btn.textContent = cat;
         btn.addEventListener("click", () => {
             // Cambiar categoría activa
             document.querySelectorAll(".category-btn").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
             activeCategory = cat;
+            
+            // Desactivar filtro de favoritos al pulsar categoría
+            activeFavoritesFilter = false;
+            if (DOM.favFilterBtn) DOM.favFilterBtn.classList.remove("active");
+            
             renderProducts();
         });
         DOM.categoriesScroll.appendChild(btn);
@@ -188,8 +388,19 @@ function renderProducts() {
         const matchesCategory = activeCategory === "Todos" || p.category === activeCategory;
         const matchesSearch = p.name.toLowerCase().includes(searchQuery) || 
                               p.description.toLowerCase().includes(searchQuery);
-        return matchesCategory && matchesSearch;
+        const matchesFavorites = !activeFavoritesFilter || favoritesList.includes(p.id);
+        
+        return (activeFavoritesFilter ? matchesFavorites : matchesCategory) && matchesSearch;
     });
+
+    // Ordenar productos según el criterio seleccionado
+    if (currentSort === "price-asc") {
+        filteredProducts.sort((a, b) => a.price - b.price);
+    } else if (currentSort === "price-desc") {
+        filteredProducts.sort((a, b) => b.price - a.price);
+    } else if (currentSort === "name-asc") {
+        filteredProducts.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    }
     
     // Actualizar conteo
     if (DOM.productCount) {
@@ -204,7 +415,7 @@ function renderProducts() {
                     <line x1="8" y1="12" x2="16" y2="12"></line>
                 </svg>
                 <h3>No se encontraron productos</h3>
-                <p>Prueba buscando con otros términos o seleccionando otra categoría.</p>
+                <p>${activeFavoritesFilter ? 'No has agregado ningún producto a tus favoritos todavía.' : 'Prueba buscando con otros términos o seleccionando otra categoría.'}</p>
             </div>
         `;
         return;
@@ -216,16 +427,28 @@ function renderProducts() {
         
         // Generar badges
         let badgesHtml = "";
-        if (product.isLimited) {
+        if (product.isLimited && product.inStock) {
+            badgesHtml += `<span class="badge badge-urgency">🔥 Últimas unidades</span>`;
+        } else if (product.isLimited) {
             badgesHtml += `<span class="badge badge-limited">Edición Limitada</span>`;
         }
         if (!product.inStock) {
             badgesHtml += `<span class="badge badge-outofstock">Sin Stock</span>`;
         }
 
+        const isFav = favoritesList.includes(product.id);
+
         card.innerHTML = `
-            <div class="product-card-media" style="cursor: pointer;">
+            <div class="product-card-media" style="cursor: pointer; position: relative;">
                 <div class="card-badges">${badgesHtml}</div>
+                
+                <!-- Botón de Favorito -->
+                <button class="btn-favorite ${isFav ? 'active' : ''}" data-id="${product.id}" title="${isFav ? 'Quitar de favoritos' : 'Agregar a favoritos'}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                    </svg>
+                </button>
+                
                 <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600'}" class="product-card-img" alt="${product.name}" loading="lazy">
             </div>
             <div class="product-card-body">
@@ -247,14 +470,24 @@ function renderProducts() {
         // Click en la tarjeta o botón agregar abre el modal de detalles
         const media = card.querySelector(".product-card-media");
         const addBtn = card.querySelector(".btn-card-add");
+        const favBtn = card.querySelector(".btn-favorite");
         
         media.addEventListener("click", () => openProductModal(product));
+        
         if (addBtn && product.inStock) {
             addBtn.addEventListener("click", (e) => {
                 e.stopPropagation();
                 openProductModal(product);
             });
         }
+        
+        if (favBtn) {
+            favBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                toggleFavorite(product.id, favBtn);
+            });
+        }
+
 
         DOM.productsGrid.appendChild(card);
     });
@@ -264,12 +497,129 @@ function renderProducts() {
 function openProductModal(product) {
     if (!product) return;
     
-    selectedSize = ""; // Resetear selección de talle
-    DOM.modalImg.src = product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600';
     DOM.modalCat.textContent = product.category;
     DOM.modalTitle.textContent = product.name;
     DOM.modalPrice.textContent = `$${product.price.toLocaleString('es-AR')}`;
     DOM.modalDesc.textContent = product.description;
+    
+    // Alerta de urgencia por edición limitada / stock crítico
+    const modalInfo = DOM.modalOverlay ? DOM.modalOverlay.querySelector(".modal-info") : null;
+    if (modalInfo) {
+        const existingUrgency = modalInfo.querySelector(".detail-urgency-msg");
+        if (existingUrgency) {
+            existingUrgency.remove();
+        }
+        
+        if (product.isLimited && product.inStock) {
+            const urgencyDiv = document.createElement("div");
+            urgencyDiv.className = "detail-urgency-msg";
+            urgencyDiv.innerHTML = `
+                <i data-lucide="flame" style="width: 16px; height: 16px;"></i>
+                <span>¡Edición Exclusiva! Últimas unidades disponibles en stock.</span>
+            `;
+            const sizeSelector = modalInfo.querySelector(".size-selector-wrap");
+            if (sizeSelector) {
+                modalInfo.insertBefore(urgencyDiv, sizeSelector);
+            } else {
+                modalInfo.appendChild(urgencyDiv);
+            }
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
+        }
+    }
+    
+    // Asegurar que el reproductor de video esté oculto y reiniciado
+    closeVideoPlayer();
+    
+    // Resetear estado de la guía de talles
+    sizeGuideVisible = false;
+    if (DOM.sizeGuideContainer) DOM.sizeGuideContainer.style.display = "none";
+    if (DOM.btnSizeGuide) DOM.btnSizeGuide.textContent = "Guía de Talles";
+    
+    // Guardar referencia del producto actual para la guía de talles
+    DOM.currentModalProduct = product;
+    
+    // Configurar Carrusel de Imágenes
+    currentImageIndex = 0;
+    currentProductImages = (product.images && Array.isArray(product.images) && product.images.length > 0)
+        ? product.images
+        : [product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600'];
+        
+    // Llenar el track del carrusel con contenedores para zoom de lupa
+    if (DOM.carouselTrack) {
+        DOM.carouselTrack.innerHTML = "";
+        currentProductImages.forEach((imgUrl, idx) => {
+            const imgContainer = document.createElement("div");
+            imgContainer.className = "carousel-img-container";
+            
+            const img = document.createElement("img");
+            img.src = imgUrl;
+            img.alt = `${product.name} - Imagen ${idx + 1}`;
+            img.className = "carousel-img";
+            
+            // Efecto lupa dinámico
+            imgContainer.addEventListener("mousemove", (e) => {
+                const rect = imgContainer.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 100;
+                const y = ((e.clientY - rect.top) / rect.height) * 100;
+                
+                img.style.transformOrigin = `${x}% ${y}%`;
+                img.style.transform = "scale(1.8)";
+            });
+            
+            imgContainer.addEventListener("mouseleave", () => {
+                img.style.transform = "scale(1)";
+                img.style.transformOrigin = "center center";
+            });
+            
+            imgContainer.appendChild(img);
+            DOM.carouselTrack.appendChild(imgContainer);
+        });
+        DOM.carouselTrack.style.transform = "translateX(0%)";
+    }
+    
+    // Renderizar Puntos Indicadores
+    if (DOM.carouselIndicators) {
+        DOM.carouselIndicators.innerHTML = "";
+        if (currentProductImages.length > 1) {
+            currentProductImages.forEach((_, idx) => {
+                const dot = document.createElement("span");
+                dot.className = `indicator-dot ${idx === 0 ? 'active' : ''}`;
+                dot.addEventListener("click", () => {
+                    currentImageIndex = idx;
+                    updateCarousel();
+                });
+                DOM.carouselIndicators.appendChild(dot);
+            });
+        }
+    }
+    
+    // Mostrar u ocultar controles de navegación
+    if (DOM.carouselPrev && DOM.carouselNext) {
+        if (currentProductImages.length > 1) {
+            DOM.carouselPrev.style.display = "flex";
+            DOM.carouselNext.style.display = "flex";
+        } else {
+            DOM.carouselPrev.style.display = "none";
+            DOM.carouselNext.style.display = "none";
+        }
+    }
+    
+    // Configurar Video
+    if (DOM.videoBadge) {
+        if (product.video && product.video.trim() !== "") {
+            DOM.videoBadge.style.display = "flex";
+            if (DOM.videoElement) {
+                DOM.videoElement.src = product.video;
+            }
+        } else {
+            DOM.videoBadge.style.display = "none";
+            if (DOM.videoElement) {
+                DOM.videoElement.src = "";
+            }
+        }
+    }
     
     // Crear chips de talles
     DOM.modalSizes.innerHTML = "";
@@ -319,15 +669,33 @@ function openProductModal(product) {
     toggleDetailModal(true);
 }
 
-// Control de ventanas/cajones deslizables
-function toggleCartDrawer(open) {
-    if (open) {
-        DOM.cartOverlay.classList.add("open");
-        document.body.style.overflow = "hidden"; // Desactivar scroll del fondo
-    } else {
-        DOM.cartOverlay.classList.remove("open");
-        document.body.style.overflow = "";
+// Actualizar posición del carrusel y puntos activos
+function updateCarousel() {
+    if (!DOM.carouselTrack) return;
+    const offset = -currentImageIndex * 100;
+    DOM.carouselTrack.style.transform = `translateX(${offset}%)`;
+    
+    // Actualizar puntos
+    if (DOM.carouselIndicators) {
+        const dots = DOM.carouselIndicators.querySelectorAll(".indicator-dot");
+        dots.forEach((dot, idx) => {
+            if (idx === currentImageIndex) {
+                dot.classList.add("active");
+            } else {
+                dot.classList.remove("active");
+            }
+        });
     }
+}
+
+// Detener reproductor de video y volver a mostrar fotos
+function closeVideoPlayer() {
+    if (DOM.videoElement) {
+        DOM.videoElement.pause();
+        DOM.videoElement.currentTime = 0;
+    }
+    if (DOM.carouselContainer) DOM.carouselContainer.style.display = "block";
+    if (DOM.videoContainer) DOM.videoContainer.style.display = "none";
 }
 
 function toggleDetailModal(open) {
@@ -337,6 +705,7 @@ function toggleDetailModal(open) {
     } else {
         DOM.modalOverlay.classList.remove("open");
         document.body.style.overflow = "";
+        closeVideoPlayer(); // Detener video al cerrar el modal
     }
 }
 
@@ -400,7 +769,7 @@ function updateCartUI() {
     
     DOM.cartItems.innerHTML = "";
     let totalItems = 0;
-    let totalPrice = 0;
+    let subtotal = 0;
     
     if (cart.length === 0) {
         DOM.cartItems.innerHTML = `
@@ -421,7 +790,7 @@ function updateCartUI() {
         
         cart.forEach(item => {
             totalItems += item.quantity;
-            totalPrice += item.price * item.quantity;
+            subtotal += item.price * item.quantity;
             
             const div = document.createElement("div");
             div.className = "cart-item";
@@ -452,9 +821,34 @@ function updateCartUI() {
         });
     }
     
+    // Calcular descuento por cupón
+    let discount = 0;
+    if (activeCoupon && subtotal > 0) {
+        discount = subtotal * (activeCoupon.percent / 100);
+        if (DOM.cartDiscountRow) DOM.cartDiscountRow.style.display = "flex";
+        if (DOM.cartDiscountPercent) DOM.cartDiscountPercent.textContent = activeCoupon.percent;
+        if (DOM.cartDiscountVal) DOM.cartDiscountVal.textContent = `-$${discount.toLocaleString('es-AR')}`;
+    } else {
+        if (DOM.cartDiscountRow) DOM.cartDiscountRow.style.display = "none";
+    }
+    
+    // Calcular costo de envío
+    const rates = storeConfig.shippingRates || { retiro: 0, moto: 1500, correo: 3500 };
+    const shippingCost = subtotal > 0 ? (rates[selectedShippingMethod] || 0) : 0;
+    
+    if (DOM.cartShippingVal) {
+        DOM.cartShippingVal.textContent = shippingCost > 0 
+            ? `$${shippingCost.toLocaleString('es-AR')}`
+            : `Gratis`;
+    }
+    
+    // Calcular Total
+    const finalTotal = Math.max(0, subtotal - discount + shippingCost);
+    
     // Actualizar contadores globales
     if (DOM.cartCount) DOM.cartCount.textContent = totalItems;
-    if (DOM.cartTotal) DOM.cartTotal.textContent = `$${totalPrice.toLocaleString('es-AR')}`;
+    if (DOM.cartSubtotal) DOM.cartSubtotal.textContent = `$${subtotal.toLocaleString('es-AR')}`;
+    if (DOM.cartTotal) DOM.cartTotal.textContent = `$${finalTotal.toLocaleString('es-AR')}`;
     
     // Exponer funciones auxiliares para que sean clickeables desde el HTML inline temporalmente
     window.updateCartQuantity = updateCartQuantity;
@@ -481,31 +875,55 @@ async function sendWhatsAppOrder() {
         return;
     }
 
-    // Calcular el total
-    let total = 0;
+    // Calcular totales
+    let subtotal = 0;
+    let itemsText = "";
+    
+    cart.forEach(item => {
+        const itemSubtotal = item.price * item.quantity;
+        subtotal += itemSubtotal;
+        itemsText += `• *${item.quantity}x* ${item.name}\n  Talle: ${item.size} | Subtotal: $${itemSubtotal.toLocaleString('es-AR')}\n\n`;
+    });
+    
+    // Calcular descuento de cupón
+    let discount = 0;
+    let couponText = "";
+    if (activeCoupon) {
+        discount = subtotal * (activeCoupon.percent / 100);
+        couponText = `- *Cupón Aplicado:* ${activeCoupon.code} (${activeCoupon.percent}% OFF)\n- *Descuento:* -$${discount.toLocaleString('es-AR')}\n`;
+    }
+    
+    // Calcular costo de envío
+    const rates = storeConfig.shippingRates || { retiro: 0, moto: 1500, correo: 3500 };
+    const shippingCost = rates[envio] || 0;
+    
+    const finalTotal = Math.max(0, subtotal - discount + shippingCost);
     
     // Construir mensaje amigable
     let mensaje = `🌸 *Pedido - Curvys Store by Moni* 🌸\n\n`;
     mensaje += `Hola Moni! Me interesa realizar este pedido:\n`;
     mensaje += `-----------------------------------------\n`;
-    
-    cart.forEach(item => {
-        const itemSubtotal = item.price * item.quantity;
-        total += itemSubtotal;
-        mensaje += `• *${item.quantity}x* ${item.name}\n  Talle: ${item.size} | Subtotal: $${itemSubtotal.toLocaleString('es-AR')}\n\n`;
-    });
-    
+    mensaje += itemsText;
     mensaje += `-----------------------------------------\n`;
-    mensaje += `💰 *Total del Pedido: $${total.toLocaleString('es-AR')}*\n\n`;
+    mensaje += `💵 *Subtotal prendas:* $${subtotal.toLocaleString('es-AR')}\n`;
+    if (discount > 0) {
+        mensaje += `🎟️ *Descuento (${activeCoupon.percent}%):* -$${discount.toLocaleString('es-AR')}\n`;
+    }
+    mensaje += `📦 *Costo de envío:* ${shippingCost > 0 ? `$${shippingCost.toLocaleString('es-AR')}` : 'Gratis'}\n`;
+    mensaje += `💰 *Total del Pedido: $${finalTotal.toLocaleString('es-AR')}*\n\n`;
     
     mensaje += `👤 *Datos del Cliente:*\n`;
     mensaje += `- *Nombre:* ${nombre}\n`;
-    mensaje += `- *Entrega:* ${envio === 'correo' ? '📦 Envíos a todo el país' : '🏢 Retiro en tienda'}\n`;
+    let metodoEnvioText = "🏢 Retiro en tienda (Gratis)";
+    if (envio === "moto") metodoEnvioText = "🛵 Envío por Moto Express";
+    if (envio === "correo") metodoEnvioText = "📦 Envío por Correo (Todo el país)";
+    mensaje += `- *Entrega:* ${metodoEnvioText}\n`;
+    
     if (envio === 'correo') {
         mensaje += `- *Dirección:* ${direccion}\n`;
     }
     if (notas) {
-        mensaje += `- *Notas:* ${notas}\n`;
+        mensaje += `- *Notas/Talle personalizado:* ${notas}\n`;
     }
     
     mensaje += `\n🛒 _Pedido generado desde la web tienda._`;
@@ -515,7 +933,7 @@ async function sendWhatsAppOrder() {
         id: `ord-${Date.now()}`,
         clientName: nombre,
         shippingMethod: envio,
-        address: envio === 'correo' ? direccion : '',
+        address: (envio === 'correo' || envio === 'moto') ? direccion : '',
         notes: notas,
         items: cart.map(item => ({
             id: item.id,
@@ -524,7 +942,10 @@ async function sendWhatsAppOrder() {
             size: item.size,
             quantity: item.quantity
         })),
-        total: total,
+        coupon: activeCoupon ? activeCoupon.code : null,
+        discount: discount,
+        shippingCost: shippingCost,
+        total: finalTotal,
         status: "Pendiente",
         createdAt: new Date().toISOString()
     };
@@ -546,8 +967,11 @@ async function sendWhatsAppOrder() {
     // Abrir enlace en nueva pestaña
     window.open(whatsappUrl, "_blank");
     
-    // Vaciar Carrito (opcional, recomendado post-redirección exitosa)
+    // Vaciar Carrito
     cart = [];
+    activeCoupon = null;
+    if (DOM.couponInput) DOM.couponInput.value = "";
+    if (DOM.couponMessage) DOM.couponMessage.textContent = "";
     saveCart();
     updateCartUI();
     toggleCartDrawer(false);
@@ -587,23 +1011,153 @@ function showToast(message) {
     }, 3500);
 }
 
-// Escuchar cambios en la categoría de entrega
-document.addEventListener("DOMContentLoaded", () => {
-    initApp();
+// ==========================================================================
+// NUEVAS FUNCIONALIDADES COMERCIALES Y VISUALES
+// ==========================================================================
 
-    const shippingSelect = document.getElementById("client-shipping");
-    const addressGroup = document.getElementById("address-group");
+// 1. SISTEMA DE TEMAS (Sun/Moon Toggle)
+function initTheme() {
+    const savedTheme = localStorage.getItem("curvys_theme") || "dark";
+    setTheme(savedTheme);
+}
+
+function setTheme(theme) {
+    currentTheme = theme;
+    const toggleIcon = DOM.themeToggle ? DOM.themeToggle.querySelector("i") : null;
     
-    if (shippingSelect && addressGroup) {
-        shippingSelect.addEventListener("change", (e) => {
-            if (e.target.value === "correo") {
-                addressGroup.style.display = "flex";
-                document.getElementById("client-address").required = true;
-            } else {
-                addressGroup.style.display = "none";
-                document.getElementById("client-address").required = false;
-                document.getElementById("client-address").value = "";
-            }
+    if (theme === "light") {
+        document.body.classList.add("light-theme");
+        if (toggleIcon) {
+            toggleIcon.setAttribute("data-lucide", "sun");
+        }
+    } else {
+        document.body.classList.remove("light-theme");
+        if (toggleIcon) {
+            toggleIcon.setAttribute("data-lucide", "moon");
+        }
+    }
+    
+    localStorage.setItem("curvys_theme", theme);
+    if (window.lucide) window.lucide.createIcons();
+}
+
+// 2. HERO SLIDER AUTOMÁTICO
+let sliderInterval = null;
+function startHeroSlider() {
+    if (sliderInterval) clearInterval(sliderInterval);
+    
+    // Crear dinámicamente diapositivas de fondo del Hero si existen en configuración
+    if (DOM.heroSlidesContainer && storeConfig.heroSlides && storeConfig.heroSlides.length > 0) {
+        DOM.heroSlidesContainer.innerHTML = "";
+        storeConfig.heroSlides.forEach((slideUrl, idx) => {
+            const slide = document.createElement("div");
+            slide.className = `hero-slide ${idx === 0 ? 'active' : ''}`;
+            slide.style.backgroundImage = `url('${slideUrl}')`;
+            DOM.heroSlidesContainer.appendChild(slide);
         });
     }
+    
+    const slides = document.querySelectorAll(".hero-slide");
+    if (slides.length <= 1) return;
+    
+    let currentSlideIdx = 0;
+    sliderInterval = setInterval(() => {
+        slides[currentSlideIdx].classList.remove("active");
+        currentSlideIdx = (currentSlideIdx + 1) % slides.length;
+        slides[currentSlideIdx].classList.add("active");
+    }, 5000);
+}
+
+// 3. SISTEMA DE FAVORITOS (Wishlist)
+function loadFavorites() {
+    try {
+        const stored = localStorage.getItem("curvys_favorites");
+        favoritesList = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        favoritesList = [];
+    }
+}
+
+function saveFavorites() {
+    localStorage.setItem("curvys_favorites", JSON.stringify(favoritesList));
+}
+
+function toggleFavorite(id, buttonEl) {
+    const idx = favoritesList.indexOf(id);
+    if (idx > -1) {
+        favoritesList.splice(idx, 1);
+        buttonEl.classList.remove("active");
+        showToast("Eliminado de favoritos");
+    } else {
+        favoritesList.push(id);
+        buttonEl.classList.add("active");
+        showToast("❤️ ¡Agregado a favoritos!");
+    }
+    saveFavorites();
+    
+    // Si el filtro de favoritos está activo, re-renderizar para ocultar la tarjeta
+    if (activeFavoritesFilter) {
+        renderProducts();
+    }
+}
+
+// 4. TABLA DE MEDIDAS DE TALLES
+const MEDIDAS_TALLES = {
+    "XS": { busto: "80-85", cintura: "60-65", cadera: "85-90" },
+    "S": { busto: "85-90", cintura: "65-70", cadera: "90-95" },
+    "M": { busto: "90-95", cintura: "70-75", cadera: "95-100" },
+    "L": { busto: "95-100", cintura: "75-80", cadera: "100-105" },
+    "XL": { busto: "100-106", cintura: "80-87", cadera: "105-112" },
+    "XXL": { busto: "106-114", cintura: "87-95", cadera: "112-120" },
+    "XXXL": { busto: "114-122", cintura: "95-103", cadera: "120-128" },
+    "4XL": { busto: "122-130", cintura: "103-111", cadera: "128-136" },
+    "5XL": { busto: "130-138", cintura: "111-119", cadera: "136-144" }
+};
+
+function renderSizeGuide() {
+    if (!DOM.sizeGuideRows) return;
+    
+    const product = DOM.currentModalProduct;
+    DOM.sizeGuideRows.innerHTML = "";
+    
+    if (product && product.sizes && product.sizes.length > 0) {
+        let hasCustomSizes = false;
+        
+        product.sizes.forEach(size => {
+            const cleanSize = size.toUpperCase().trim();
+            const info = MEDIDAS_TALLES[cleanSize];
+            
+            const tr = document.createElement("tr");
+            tr.style.borderBottom = "1px solid var(--border-color)";
+            
+            if (info) {
+                tr.innerHTML = `
+                    <td style="padding: 6px 4px; font-weight: 700; color: var(--accent);">${size}</td>
+                    <td style="padding: 6px 4px;">${info.busto} cm</td>
+                    <td style="padding: 6px 4px;">${info.cintura} cm</td>
+                    <td style="padding: 6px 4px;">${info.cadera} cm</td>
+                `;
+            } else {
+                hasCustomSizes = true;
+                tr.innerHTML = `
+                    <td style="padding: 6px 4px; font-weight: 700; color: var(--accent);">${size}</td>
+                    <td colspan="3" style="padding: 6px 4px; color: var(--text-muted); font-style: italic;">Medida adaptable (Ver notas)</td>
+                `;
+            }
+            DOM.sizeGuideRows.appendChild(tr);
+        });
+    } else {
+        DOM.sizeGuideRows.innerHTML = `
+            <tr>
+                <td colspan="4" style="padding: 10px 4px; text-align: center; color: var(--text-muted);">
+                    Esta prenda es de talle único adaptable y suelto (se adapta desde un talle M a un XXL).
+                </td>
+            </tr>
+        `;
+    }
+}
+
+// Inicialización del DOM
+document.addEventListener("DOMContentLoaded", () => {
+    initApp();
 });

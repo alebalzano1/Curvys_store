@@ -44,6 +44,10 @@
             </nav>
             
             <div class="header-actions">
+                <!-- Botón de Tema Claro/Oscuro -->
+                <button class="cart-trigger" id="theme-toggle" title="Cambiar Tema" aria-label="Cambiar Tema">
+                    <i data-lucide="moon" style="width: 22px; height: 22px;"></i>
+                </button>
                 <!-- Botón al Panel Administrador -->
                 <a href="admin.html" class="cart-trigger" title="Panel Administrador" aria-label="Panel Administrador">
                     <i data-lucide="settings" style="width: 22px; height: 22px;"></i>
@@ -58,8 +62,15 @@
     </header>
 
     <!-- Sección Hero de Presentación -->
-    <section class="hero">
-        <div class="container">
+    <section class="hero" id="hero-slider-section">
+        <!-- Diapositivas de fondo animadas -->
+        <div class="hero-slides-container" id="hero-slides-container">
+            <div class="hero-slide active" style="background-image: url('https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1600')"></div>
+            <div class="hero-slide" style="background-image: url('https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=1600')"></div>
+            <div class="hero-slide" style="background-image: url('https://images.unsplash.com/photo-1490114538077-0a7f8cb49891?q=80&w=1600')"></div>
+        </div>
+        
+        <div class="container hero-content-container">
             <span class="hero-subtitle">Boutique Exclusiva</span>
             <h1 class="hero-title" id="hero-title">Curvys.Store by Moni</h1>
             <p class="hero-desc" id="hero-desc">Indumentaria de diseño único. Confección a medida y de edición limitada.</p>
@@ -79,15 +90,34 @@
     <!-- Barra de Filtros y Búsqueda de Productos -->
     <section class="search-filter-section" id="catalogo">
         <div class="container search-filter-wrapper">
-            <!-- Barra de categorías deslizable horizontalmente -->
-            <div class="categories-scroll" id="categories-scroll">
-                <!-- Se inyecta dinámicamente con JS -->
+            <!-- Barra de categorías deslizable horizontalmente + Favoritos -->
+            <div style="display: flex; align-items: center; gap: 15px; width: 100%; flex-wrap: wrap;">
+                <div class="categories-scroll" id="categories-scroll" style="flex-grow: 1;">
+                    <!-- Se inyecta dinámicamente con JS -->
+                </div>
+                <button class="category-btn fav-filter-btn" id="fav-filter-btn" style="white-space: nowrap; display: flex; align-items: center; gap: 6px; color: #ef4444; border-color: rgba(239, 68, 68, 0.2);">
+                    <i data-lucide="heart" style="width: 14px; height: 14px;"></i>
+                    Mis Favoritos
+                </button>
             </div>
             
-            <!-- Buscador en tiempo real -->
-            <div class="search-box">
-                <i data-lucide="search" style="width: 18px; height: 18px;"></i>
-                <input type="text" id="search-input" placeholder="Buscar prenda...">
+            <!-- Buscador y Ordenador agrupados -->
+            <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; justify-content: flex-end; flex-grow: 1;">
+                <!-- Buscador en tiempo real -->
+                <div class="search-box" style="margin-bottom: 0;">
+                    <i data-lucide="search" style="width: 18px; height: 18px;"></i>
+                    <input type="text" id="search-input" placeholder="Buscar prenda...">
+                </div>
+                
+                <!-- Ordenador -->
+                <div class="sort-box">
+                    <select id="sort-select" class="sort-select" aria-label="Ordenar catálogo">
+                        <option value="default">Destacados</option>
+                        <option value="price-asc">Precio: Menor a Mayor</option>
+                        <option value="price-desc">Precio: Mayor a Menor</option>
+                        <option value="name-asc">Nombre: A - Z</option>
+                    </select>
+                </div>
             </div>
         </div>
     </section>
@@ -133,7 +163,22 @@
             
             <!-- Footer del Carrito con totales y formulario de contacto -->
             <div class="cart-drawer-footer">
-                <div class="cart-total-row">
+                <div class="cart-total-details" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-secondary); border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>Subtotal prendas:</span>
+                        <span id="cart-subtotal">$0</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; color: #ef4444; display: none;" id="cart-discount-row">
+                        <span>Descuento (<span id="cart-discount-percent">0</span>%):</span>
+                        <span id="cart-discount-val">-$0</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>Costo de envío:</span>
+                        <span id="cart-shipping-val">$0</span>
+                    </div>
+                </div>
+                
+                <div class="cart-total-row" style="margin-bottom: 15px;">
                     <span class="cart-total-label">Total estimado:</span>
                     <span class="cart-total-value" id="cart-total">$0</span>
                 </div>
@@ -151,18 +196,30 @@
                         <label for="client-shipping">Método de Entrega</label>
                         <select id="client-shipping" class="form-control">
                             <option value="retiro">Retirar por Taller (Sin Costo)</option>
+                            <option value="moto">Envío por Moto Express</option>
                             <option value="correo">Envío por Correo (Todo el país)</option>
                         </select>
+                        <span class="form-help" id="shipping-cost-label" style="font-size: 0.75rem; color: var(--accent); font-weight: 600; margin-top: 4px; display: block;">Envío: Gratis</span>
                     </div>
                     
                     <div class="form-group" id="address-group" style="display: none;">
                         <label for="client-address">Dirección de Envío *</label>
                         <input type="text" id="client-address" class="form-control" placeholder="Dirección, Localidad, CP">
                     </div>
+
+                    <!-- Campo de Cupón de Descuento -->
+                    <div class="form-group">
+                        <label for="coupon-input">Cupón de Descuento</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="coupon-input" class="form-control" style="text-transform: uppercase;" placeholder="Ej. CURVYS10">
+                            <button type="button" id="btn-apply-coupon" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; border-color: var(--border-color); white-space: nowrap;">Aplicar</button>
+                        </div>
+                        <span class="form-help" id="coupon-message" style="font-size: 0.7rem; display: block; margin-top: 4px;"></span>
+                    </div>
                     
                     <div class="form-group">
                         <label for="client-notes">Notas / Talle personalizado</label>
-                        <textarea id="client-notes" class="form-control" rows="2" placeholder="Ej: Me gustaría el sweter en azul si es posible o talle extra..."></textarea>
+                        <textarea id="client-notes" class="form-control" rows="2" placeholder="Ej: Me gustaría el sweter en azul si es posible..."></textarea>
                     </div>
                     
                     <button type="submit" class="btn btn-primary" id="whatsapp-btn" style="width: 100%; border-radius: 8px; margin-top: 10px;">
@@ -181,7 +238,37 @@
                 <i data-lucide="x" style="width: 20px; height: 20px;"></i>
             </button>
             <div class="modal-media">
-                <img id="modal-img" src="" alt="Cargando imagen...">
+                <div class="carousel-container" id="modal-carousel-container">
+                    <div class="carousel-track" id="modal-carousel-track">
+                        <img id="modal-img" src="" alt="Cargando imagen...">
+                    </div>
+                    
+                    <!-- Badge indicador de video disponible -->
+                    <button class="video-badge" id="modal-video-badge" style="display: none;">
+                        <i data-lucide="play" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; margin-right: 4px;"></i>
+                        <span>Ver en Movimiento</span>
+                    </button>
+
+                    <!-- Controles de Navegación del Carrusel -->
+                    <button class="carousel-btn-nav prev" id="carousel-prev" aria-label="Imagen anterior">
+                        <i data-lucide="chevron-left" style="width: 20px; height: 20px;"></i>
+                    </button>
+                    <button class="carousel-btn-nav next" id="carousel-next" aria-label="Imagen siguiente">
+                        <i data-lucide="chevron-right" style="width: 20px; height: 20px;"></i>
+                    </button>
+                    
+                    <!-- Puntos indicadores inferiores -->
+                    <div class="carousel-indicators" id="carousel-indicators"></div>
+                </div>
+                
+                <!-- Contenedor para el reproductor de video vertical -->
+                <div class="modal-video-container" id="modal-video-container" style="display: none;">
+                    <video id="modal-video" controls loop playsinline></video>
+                    <button class="video-close-btn" id="modal-video-close" aria-label="Cerrar video">
+                        <i data-lucide="arrow-left" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 6px;"></i>
+                        <span>Volver a Fotos</span>
+                    </button>
+                </div>
             </div>
             <div class="modal-info">
                 <span class="modal-cat" id="modal-cat">Categoría</span>
@@ -190,10 +277,38 @@
                 <p class="modal-desc" id="modal-desc">Descripción del producto...</p>
                 
                 <div class="size-selector-wrap">
-                    <h4 class="selector-label">Talles Disponibles</h4>
+                    <div class="selector-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h4 class="selector-label" style="margin-bottom: 0;">Talles Disponibles</h4>
+                        <button type="button" id="btn-size-guide" class="size-guide-link" style="background: none; border: none; color: var(--accent); font-size: 0.8rem; text-decoration: underline; cursor: pointer; font-weight: 500;">
+                            Guía de Talles
+                        </button>
+                    </div>
                     <div class="size-chips" id="modal-sizes">
                         <!-- Chips de talle inyectados dinámicamente -->
                     </div>
+                </div>
+
+                <!-- Sección Guía de Talles (Oculta por defecto) -->
+                <div class="size-guide-container" id="size-guide-container" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border-color);">
+                    <h4 style="font-size: 0.9rem; margin-bottom: 8px; color: var(--accent);">Tabla de Medidas Sugeridas</h4>
+                    <div class="table-responsive" style="max-height: 180px; overflow-y: auto;">
+                        <table class="size-guide-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.75rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-secondary);">
+                                    <th style="padding: 6px 4px;">Talle</th>
+                                    <th style="padding: 6px 4px;">Busto (cm)</th>
+                                    <th style="padding: 6px 4px;">Cintura (cm)</th>
+                                    <th style="padding: 6px 4px;">Cadera (cm)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="size-guide-rows">
+                                <!-- Filas inyectadas dinámicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px; line-height: 1.3;">
+                        * Las medidas son aproximadas y se adaptan a prendas sueltas y elastizadas.
+                    </p>
                 </div>
                 
                 <div class="modal-actions">
