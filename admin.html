@@ -17,9 +17,7 @@
     <div class="container login-container" id="login-section">
         <div class="login-card">
             <div class="login-logo">
-                <div class="logo-circle" style="margin-bottom: 10px;">
-                    <i data-lucide="lock" style="color: #d4af37; width: 22px; height: 22px;"></i>
-                </div>
+                <img src="logo.jpg" alt="Curvys Store by Moni" class="logo-img-original" style="margin-bottom: 15px; width: 80px; height: 80px; box-shadow: 0 0 25px var(--accent-glow);">
                 <h1 class="login-title">CURVYS Store</h1>
                 <p class="login-subtitle">Gestión de Catálogo Comercial</p>
             </div>
@@ -27,7 +25,7 @@
             <form id="login-form">
                 <div class="form-group">
                     <label for="login-email">Correo Electrónico</label>
-                    <input type="email" id="login-email" class="form-control" placeholder="admin@curvys.com" required>
+                    <input type="email" id="login-email" class="form-control" placeholder="nombre@correo.com" required>
                 </div>
                 <div class="form-group">
                     <label for="login-password">Contraseña</label>
@@ -37,17 +35,6 @@
                     Ingresar al Panel
                 </button>
             </form>
-            
-            <div style="margin-top: 25px; padding: 12px; background: rgba(212, 175, 55, 0.05); border: 1px dashed var(--border-accent); border-radius: 8px; text-align: left;">
-                <p style="font-size: 0.75rem; color: var(--accent); font-weight: 600; margin-bottom: 4px;">
-                    🔑 Servidor Local Sandbox Activo:
-                </p>
-                <p style="font-size: 0.7rem; color: var(--text-secondary); line-height: 1.4;">
-                    Para probar localmente sin conectar Firebase en la nube, ingresá usando:<br>
-                    <strong>Usuario:</strong> admin@curvys.com<br>
-                    <strong>Clave:</strong> curvysadmin
-                </p>
-            </div>
         </div>
     </div>
 
@@ -58,13 +45,7 @@
         <header class="admin-header">
             <div class="container admin-header-container">
                 <div class="logo">
-                    <div class="logo-circle">
-                        <i data-lucide="sliders" style="color: #d4af37; width: 20px; height: 20px;"></i>
-                    </div>
-                    <div class="logo-text">
-                        PANEL CONTROL
-                        <span>Curvys.Store</span>
-                    </div>
+                    <img src="logo.jpg" alt="Curvys Store by Moni" class="logo-img-original">
                 </div>
                 
                 <div class="header-actions">
@@ -458,40 +439,54 @@
                         </div>
                     </div>
 
-                    <!-- Subida de imagen con Cloudinary -->
+                    <!-- 1. Foto Principal -->
                     <div class="form-group">
-                        <label>Foto de la Prenda</label>
+                        <label>Foto Principal de la Prenda *</label>
                         <div class="image-upload-wrapper">
-                            <!-- Preview Box -->
                             <div class="image-preview-box" id="image-preview">
                                 <span>Sin Imagen</span>
                             </div>
-                            
-                            <!-- Uploader Zone -->
                             <div class="drop-zone" id="drop-zone">
-                                <i data-lucide="upload-cloud" style="color: var(--accent); width: 32px; height: 32px;"></i>
-                                <p>Arrastrá la imagen aquí o haz click para seleccionar</p>
-                                <span>Formatos admitidos: JPG, PNG, WEBP</span>
-                                <input type="file" id="file-input" accept="image/*,video/*">
+                                <i data-lucide="image" style="color: var(--accent); width: 28px; height: 28px;"></i>
+                                <p>Arrastrá la foto principal aquí o haz click</p>
+                                <span>Formatos: JPG, PNG, WEBP</span>
+                                <input type="file" id="file-input" accept="image/*">
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Campo URL directo en caso de fallback -->
+
+                    <!-- 2. Fotos Adicionales (Carrusel) -->
                     <div class="form-group">
-                        <label for="prod-image-url">Enlace directo de la imagen principal (Opcional)</label>
-                        <input type="url" id="prod-image-url" class="form-control" placeholder="https://images.unsplash.com/... (link externo)">
+                        <label>Fotos Adicionales para el Carrusel</label>
+                        <div class="image-upload-wrapper" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                            <div class="image-preview-box" id="additional-previews-container" style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-start; align-items: center; min-height: 80px; width: 100%; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.01); height: auto; overflow: visible;">
+                                <span id="no-additional-msg" style="font-size: 0.75rem; color: var(--text-muted); width: 100%; text-align: center; display: block;">No hay fotos adicionales</span>
+                            </div>
+                            <div class="drop-zone" id="additional-drop-zone" style="padding: 15px;">
+                                <i data-lucide="images" style="color: var(--accent); width: 28px; height: 28px;"></i>
+                                <p>Arrastrá más fotos o haz click (Múltiple)</p>
+                                <span>Formatos: JPG, PNG, WEBP</span>
+                                <input type="file" id="additional-file-input" accept="image/*" multiple>
+                            </div>
+                        </div>
                     </div>
 
+                    <!-- 3. Video de la Prenda (En movimiento) -->
                     <div class="form-group">
-                        <label for="prod-images-additional">Imágenes adicionales (URLs separadas por comas)</label>
-                        <textarea id="prod-images-additional" class="form-control" rows="2" placeholder="https://ejemplo.com/foto1.jpg, https://ejemplo.com/foto2.jpg"></textarea>
+                        <label>Video de la Prenda (En movimiento)</label>
+                        <div class="image-upload-wrapper">
+                            <div class="image-preview-box" id="video-preview-container">
+                                <span>Sin Video</span>
+                            </div>
+                            <div class="drop-zone" id="video-drop-zone">
+                                <i data-lucide="video" style="color: var(--accent); width: 28px; height: 28px;"></i>
+                                <p>Arrastrá el video aquí o haz click</p>
+                                <span>Formatos: MP4, MOV, WEBM</span>
+                                <input type="file" id="video-file-input" accept="video/*">
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="prod-video-url">Enlace directo de Video MP4 (Opcional)</label>
-                        <input type="url" id="prod-video-url" class="form-control" placeholder="https://ejemplo.com/video-prenda.mp4">
-                    </div>
 
                     <!-- Botones Footer -->
                     <div class="modal-admin-form-footer">

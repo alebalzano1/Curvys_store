@@ -28,14 +28,7 @@
     <header>
         <div class="container header-container">
             <a href="#" class="logo">
-                <div class="logo-circle">
-                    <!-- Ícono de Red estilizado (Boutique de ropa) -->
-                    <i data-lucide="sparkles" style="color: #d4af37; width: 20px; height: 20px;"></i>
-                </div>
-                <div class="logo-text">
-                    CURVYS
-                    <span>Store by Moni</span>
-                </div>
+                <img src="logo.jpg" alt="Curvys Store by Moni" class="logo-img-original">
             </a>
             
             <nav class="desktop-only">
@@ -156,78 +149,82 @@
                 </button>
             </div>
             
-            <!-- Contenedor de artículos en el carrito -->
-            <div class="cart-items-container" id="cart-items">
-                <!-- Inyección dinámica con JS -->
-            </div>
-            
-            <!-- Footer del Carrito con totales y formulario de contacto -->
-            <div class="cart-drawer-footer">
-                <div class="cart-total-details" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-secondary); border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 10px;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>Subtotal prendas:</span>
-                        <span id="cart-subtotal">$0</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; color: #ef4444; display: none;" id="cart-discount-row">
-                        <span>Descuento (<span id="cart-discount-percent">0</span>%):</span>
-                        <span id="cart-discount-val">-$0</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>Costo de envío:</span>
-                        <span id="cart-shipping-val">$0</span>
-                    </div>
+            <!-- Cuerpo scrollable del Carrito -->
+            <div class="cart-drawer-body">
+                <!-- Contenedor de artículos en el carrito -->
+                <div class="cart-items-container" id="cart-items">
+                    <!-- Inyección dinámica con JS -->
                 </div>
                 
-                <div class="cart-total-row" style="margin-bottom: 15px;">
-                    <span class="cart-total-label">Total estimado:</span>
-                    <span class="cart-total-value" id="cart-total">$0</span>
-                </div>
-                
-                <!-- Formulario de Finalización -->
-                <form id="checkout-form" class="checkout-form-container">
-                    <span class="checkout-title">Datos del Pedido</span>
-                    
-                    <div class="form-group">
-                        <label for="client-name">Nombre Completo *</label>
-                        <input type="text" id="client-name" class="form-control" placeholder="Ej. María Pérez" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="client-shipping">Método de Entrega</label>
-                        <select id="client-shipping" class="form-control">
-                            <option value="retiro">Retirar por Taller (Sin Costo)</option>
-                            <option value="moto">Envío por Moto Express</option>
-                            <option value="correo">Envío por Correo (Todo el país)</option>
-                        </select>
-                        <span class="form-help" id="shipping-cost-label" style="font-size: 0.75rem; color: var(--accent); font-weight: 600; margin-top: 4px; display: block;">Envío: Gratis</span>
-                    </div>
-                    
-                    <div class="form-group" id="address-group" style="display: none;">
-                        <label for="client-address">Dirección de Envío *</label>
-                        <input type="text" id="client-address" class="form-control" placeholder="Dirección, Localidad, CP">
-                    </div>
-
-                    <!-- Campo de Cupón de Descuento -->
-                    <div class="form-group">
-                        <label for="coupon-input">Cupón de Descuento</label>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="text" id="coupon-input" class="form-control" style="text-transform: uppercase;" placeholder="Ej. CURVYS10">
-                            <button type="button" id="btn-apply-coupon" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; border-color: var(--border-color); white-space: nowrap;">Aplicar</button>
+                <!-- Footer del Carrito con totales y formulario de contacto -->
+                <div class="cart-drawer-footer">
+                    <div class="cart-total-details" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 0.85rem; color: var(--text-secondary); border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Subtotal prendas:</span>
+                            <span id="cart-subtotal">$0</span>
                         </div>
-                        <span class="form-help" id="coupon-message" style="font-size: 0.7rem; display: block; margin-top: 4px;"></span>
+                        <div style="display: flex; justify-content: space-between; color: #ef4444; display: none;" id="cart-discount-row">
+                            <span>Descuento (<span id="cart-discount-percent">0</span>%):</span>
+                            <span id="cart-discount-val">-$0</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Costo de envío:</span>
+                            <span id="cart-shipping-val">$0</span>
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="client-notes">Notas / Talle personalizado</label>
-                        <textarea id="client-notes" class="form-control" rows="2" placeholder="Ej: Me gustaría el sweter en azul si es posible..."></textarea>
+                    <div class="cart-total-row" style="margin-bottom: 15px;">
+                        <span class="cart-total-label">Total estimado:</span>
+                        <span class="cart-total-value" id="cart-total">$0</span>
                     </div>
                     
-                    <button type="submit" class="btn btn-primary" id="whatsapp-btn" style="width: 100%; border-radius: 8px; margin-top: 10px;">
-                        <i data-lucide="send" style="width: 18px; height: 18px;"></i>
-                        Finalizar por WhatsApp
-                    </button>
-                </form>
+                    <!-- Formulario de Finalización -->
+                    <form id="checkout-form" class="checkout-form-container">
+                        <span class="checkout-title">Datos del Pedido</span>
+                        
+                        <div class="form-group">
+                            <label for="client-name">Nombre Completo *</label>
+                            <input type="text" id="client-name" class="form-control" placeholder="Ej. María Pérez" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="client-shipping">Método de Entrega</label>
+                            <select id="client-shipping" class="form-control">
+                                <option value="retiro">Retirar por Taller (Sin Costo)</option>
+                                <option value="moto">Envío por Moto Express</option>
+                                <option value="correo">Envío por Correo (Todo el país)</option>
+                            </select>
+                            <span class="form-help" id="shipping-cost-label" style="font-size: 0.75rem; color: var(--accent); font-weight: 600; margin-top: 4px; display: block;">Envío: Gratis</span>
+                        </div>
+                        
+                        <div class="form-group" id="address-group" style="display: none;">
+                            <label for="client-address">Dirección de Envío *</label>
+                            <input type="text" id="client-address" class="form-control" placeholder="Dirección, Localidad, CP">
+                        </div>
+    
+                        <!-- Campo de Cupón de Descuento -->
+                        <div class="form-group">
+                            <label for="coupon-input">Cupón de Descuento</label>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="coupon-input" class="form-control" style="text-transform: uppercase;" placeholder="Ej. CURVYS10">
+                                <button type="button" id="btn-apply-coupon" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; border-color: var(--border-color); white-space: nowrap;">Aplicar</button>
+                            </div>
+                            <span class="form-help" id="coupon-message" style="font-size: 0.7rem; display: block; margin-top: 4px;"></span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="client-notes">Notas / Talle personalizado</label>
+                            <textarea id="client-notes" class="form-control" rows="2" placeholder="Ej: Me gustaría el sweter en azul si es posible..."></textarea>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" id="whatsapp-btn" style="width: 100%; border-radius: 8px; margin-top: 10px;">
+                            <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+                            Finalizar por WhatsApp
+                        </button>
+                    </form>
+                </div>
             </div>
+
         </div>
     </div>
 
@@ -324,14 +321,8 @@
     <footer id="contacto">
         <div class="container footer-grid">
             <div class="footer-brand">
-                <a href="#" class="logo">
-                    <div class="logo-circle">
-                        <i data-lucide="sparkles" style="color: #d4af37; width: 20px; height: 20px;"></i>
-                    </div>
-                    <div class="logo-text">
-                        CURVYS
-                        <span>Store by Moni</span>
-                    </div>
+                <a href="#" class="logo" style="margin-bottom: 15px; display: inline-block;">
+                    <img src="logo.jpg" alt="Curvys Store by Moni" class="logo-img-original">
                 </a>
                 <p class="footer-desc" id="footer-about">Indumentaria de diseño único de edición limitada. Sé tu propia inspiración.</p>
             </div>

@@ -91,8 +91,7 @@ const DOM = {
     footerAbout: document.getElementById("footer-about"),
     footerInsta: document.getElementById("footer-insta"),
     footerWhatsapp: document.getElementById("footer-whatsapp"),
-    instagramLink: document.getElementById("instagram-link"),
-    contactLink: document.getElementById("contact-link")
+    instagramLink: document.getElementById("instagram-link")
 };
 
 // Inicialización de la aplicación
@@ -157,7 +156,6 @@ function applyStoreConfig() {
     
     // Configurar enlaces sociales
     if (DOM.instagramLink) DOM.instagramLink.href = storeConfig.instagram || "#";
-    if (DOM.contactLink) DOM.contactLink.href = `https://wa.me/${storeConfig.whatsapp}`;
     if (DOM.footerInsta) DOM.footerInsta.href = storeConfig.instagram || "#";
     if (DOM.footerWhatsapp) DOM.footerWhatsapp.href = `https://wa.me/${storeConfig.whatsapp}`;
 }
@@ -706,6 +704,17 @@ function toggleDetailModal(open) {
         DOM.modalOverlay.classList.remove("open");
         document.body.style.overflow = "";
         closeVideoPlayer(); // Detener video al cerrar el modal
+    }
+}
+
+function toggleCartDrawer(open) {
+    if (!DOM.cartOverlay) return;
+    if (open) {
+        DOM.cartOverlay.classList.add("open");
+        document.body.style.overflow = "hidden";
+    } else {
+        DOM.cartOverlay.classList.remove("open");
+        document.body.style.overflow = "";
     }
 }
 

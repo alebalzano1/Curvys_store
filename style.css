@@ -136,6 +136,22 @@ header {
     object-fit: contain;
 }
 
+.logo-img-original {
+    height: 64px;
+    width: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    overflow: hidden;
+    border: 1.5px solid var(--accent);
+    box-shadow: 0 0 12px var(--accent-glow);
+    transition: var(--transition-smooth);
+}
+
+.logo-img-original:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 18px rgba(212, 175, 55, 0.35);
+}
+
 .logo-text {
     font-family: var(--font-serif);
     font-size: 1.6rem;
@@ -773,13 +789,19 @@ nav {
     transform: rotate(90deg);
 }
 
-.cart-items-container {
+.cart-drawer-body {
     flex-grow: 1;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.cart-items-container {
     padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 20px;
+    flex-shrink: 0;
 }
 
 /* Empty Cart View */
@@ -1540,6 +1562,80 @@ footer::before {
 
 .drop-zone input {
     display: none;
+}
+
+/* Thumbnail preview item in uploader */
+.preview-thumbnail {
+    position: relative;
+    width: 65px;
+    height: 65px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    display: inline-block;
+}
+
+.preview-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.preview-thumbnail-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.95);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    transition: var(--transition-smooth);
+}
+
+.preview-thumbnail-remove:hover {
+    background: #ef4444;
+    transform: scale(1.1);
+}
+
+/* Video preview wrapper */
+.video-preview-box {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.video-preview-remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: rgba(239, 68, 68, 0.95);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 5;
+    transition: var(--transition-smooth);
+}
+
+.video-preview-remove:hover {
+    background: #ef4444;
 }
 
 /* Login Card */

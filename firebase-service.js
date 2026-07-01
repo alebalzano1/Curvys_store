@@ -1,4 +1,4 @@
-// Firebase & Cloudinary Service para Curvys Store by Moni
+// Firebase & Storage Service para Curvys Store by Moni
 // Sincronización robusta en tiempo real con soporte de persistencia local (Sandbox)
 
 let db = null;
@@ -339,7 +339,15 @@ const FirebaseService = {
             return downloadUrl;
         } catch (error) {
             console.error("[Firebase Storage] Error al subir archivo:", error);
-            throw error;
+            let friendlyMessage = "Error en el servidor de Firebase Storage.";
+            if (error.code === 'storage/unauthorized') {
+                friendlyMessage = "No autorizado. Verifica las Reglas de Seguridad en tu consola de Firebase Storage.";
+            } else if (error.code === 'storage/quota-exceeded') {
+                friendlyMessage = "Límite de cuota excedido. Puede que necesites actualizar al plan Blaze de Firebase.";
+            } else if (error.message && (error.message.includes('Blaze') || error.message.includes('plan'))) {
+                friendlyMessage = "Subida fallida: Firebase requiere el plan Blaze para habilitar Cloud Storage.";
+            }
+            throw new Error(friendlyMessage);
         }
     }
 };
