@@ -95,11 +95,21 @@ let isFirstLoad = true;
 // Inicialización del Panel Administrador
 function initAdmin() {
     // 1. Escuchar el estado de autenticación
-    FirebaseService.onAuth((user) => {
+    FirebaseService.onAuth(async (user) => {
         if (user) {
             // Usuario autenticado
             DOM.loginSection.style.display = "none";
             DOM.adminDashboard.style.display = "block";
+            
+            // Si estamos en modo nube, ejecutamos la autosiembra ahora de forma segura con el admin ya autenticado.
+            if (FirebaseService.isCloudActive() && window.initialProducts && window.initialConfig) {
+                try {
+                    await FirebaseService.autoSeedDatabase(window.initialProducts, window.initialConfig);
+                } catch (err) {
+                    console.error("Error al intentar autosembrar la base de datos:", err);
+                }
+            }
+            
             loadDashboardData();
         } else {
             // No autenticado
@@ -123,8 +133,8 @@ async function loadDashboardData() {
         allOrders = await FirebaseService.getOrders() || [];
         settings = await FirebaseService.getConfig() || {};
         
-        // Caídas de seguridad en local / sandbox
-        if (allProducts.length === 0 && window.initialProducts) {
+        // Caídas de seguridad en caso de carga fallida (null o undefined)
+        if ((allProducts === null || allProducts === undefined) && window.initialProducts) {
             allProducts = window.initialProducts;
         }
         if (Object.keys(settings).length === 0 && window.initialConfig) {
@@ -817,6 +827,12 @@ async function saveProductForm() {
     } catch (err) {
         console.error(err);
         showToast("Error al guardar el producto.");
+    } finally {
+        const saveBtn = DOM.productForm.querySelector("button[type='submit']");
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = "Guardar Prenda";
+        }
     }
 }
 

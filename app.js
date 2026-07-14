@@ -107,8 +107,8 @@ async function initApp() {
         products = await FirebaseService.getProducts();
         storeConfig = await FirebaseService.getConfig();
 
-        // Caídas de seguridad en caso de base de datos vacía o carga demorada
-        if (!products || products.length === 0) {
+        // Caídas de seguridad en caso de carga fallida (null o undefined)
+        if (products === null || products === undefined) {
             products = window.initialProducts || [];
         }
         if (!storeConfig || Object.keys(storeConfig).length === 0) {

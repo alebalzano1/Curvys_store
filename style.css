@@ -71,7 +71,7 @@ button, input, select, textarea {
 /* Banner superior */
 .announcement-banner {
     background: linear-gradient(90deg, #0a0a0c, var(--accent-dark), #0a0a0c);
-    color: var(--white);
+    color: #ffffff;
     text-align: center;
     padding: 12px 10px;
     font-family: var(--font-serif);
@@ -123,11 +123,11 @@ header {
     height: 44px;
     border-radius: 50%;
     background: #121216;
-    border: 1.5px solid var(--accent);
+    border: 1.5px solid #000000;
     display: flex;
     justify-content: center;
     align-items: center;
-    box-shadow: 0 0 15px var(--accent-glow);
+    box-shadow: none;
 }
 
 .logo-img {
@@ -142,14 +142,14 @@ header {
     border-radius: 50%;
     object-fit: cover;
     overflow: hidden;
-    border: 1.5px solid var(--accent);
-    box-shadow: 0 0 12px var(--accent-glow);
+    border: 1.5px solid #000000;
+    box-shadow: none;
     transition: var(--transition-smooth);
 }
 
 .logo-img-original:hover {
     transform: scale(1.05);
-    box-shadow: 0 0 18px rgba(212, 175, 55, 0.35);
+    box-shadow: none;
 }
 
 .logo-text {
@@ -2134,17 +2134,31 @@ body.light-theme {
 
 /* Ajustes especiales para elementos en tema claro */
 body.light-theme header {
-    background: rgba(253, 251, 247, 0.85);
+    background: rgba(10, 10, 12, 0.95);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme header .nav-link {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+body.light-theme header .nav-link:hover, 
+body.light-theme header .nav-link.active {
+    color: var(--accent);
+    background: rgba(212, 175, 55, 0.08);
+}
+
+body.light-theme header .cart-trigger {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+body.light-theme header .cart-trigger:hover {
+    color: var(--accent);
 }
 
 body.light-theme .logo-circle {
     background: #f6f3eb;
     box-shadow: 0 0 10px var(--accent-glow);
-}
-
-body.light-theme .nav-link:hover, 
-body.light-theme .nav-link.active {
-    background: rgba(184, 149, 43, 0.08);
 }
 
 body.light-theme .hero {
@@ -2470,5 +2484,50 @@ body.light-theme .detail-urgency-msg {
     color: #b91c1c;
     background: rgba(185, 28, 28, 0.05);
     border-color: rgba(185, 28, 28, 0.1);
+}
+
+/* ==========================================================================
+   SECCIÓN: GUÍA DE TALLES (¿Cómo saber tu talle?)
+   ========================================================================== */
+
+.size-guide-section {
+    padding: 60px 0;
+    background: var(--bg-primary);
+    transition: var(--transition-smooth);
+}
+
+.size-guide-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 30px;
+    margin-top: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    transition: var(--transition-smooth);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.size-guide-img-container {
+    width: 100%;
+    max-width: 700px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.size-guide-img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: contain;
+    /* Por defecto (tema oscuro): invertimos colores para integrarla a la estética oscura */
+    filter: invert(0.92) hue-rotate(180deg) brightness(1.1) contrast(1.05);
+    transition: filter 0.3s ease;
+}
+
+/* En tema claro: mostramos la imagen en sus colores originales */
+body.light-theme .size-guide-img {
+    filter: none;
 }
 

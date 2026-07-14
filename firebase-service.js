@@ -19,6 +19,53 @@ try {
     console.error("❌ [Firebase] Error al inicializar Firebase:", error);
 }
 
+// Función auxiliar para comprimir imágenes en el cliente (reduce el tamaño para guardarlo en Firestore si falla Storage)
+function compressImageHelper(file, maxWidth = 800, maxHeight = 800, quality = 0.7) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement("canvas");
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = Math.round((width * maxHeight) / height);
+                        height = maxHeight;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const dataUrl = canvas.toDataURL("image/jpeg", quality);
+                resolve(dataUrl);
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+    });
+}
+
+// Función auxiliar para forzar un límite de tiempo en las promesas de Firestore
+function withTimeout(promise, timeoutMs = 5000) {
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("timeout")), timeoutMs)
+    );
+    return Promise.race([promise, timeoutPromise]);
+}
+
 const FirebaseService = {
     // --- Diagnóstico de Conexión ---
     isCloudActive() {
@@ -99,17 +146,19 @@ const FirebaseService = {
             return;
         }
         try {
-            const productSnapshot = await db.collection("products").limit(1).get();
-            if (productSnapshot.empty) {
+            // Para evitar volver a sembrar productos cuando el usuario decide eliminarlos todos,
+            // verificamos si la configuración principal 'settings/main' ya fue creada (indicando que ya se inicializó la BD).
+            const configDoc = await withTimeout(db.collection("settings").doc("main").get());
+            if (!configDoc.exists) {
                 console.log("🌱 [Firebase] Base de datos vacía. Iniciando autosiembra para Curvys Store...");
 
                 // Sembrar Productos
                 for (const p of initialProducts) {
-                    await db.collection("products").doc(p.id).set(p);
+                    await withTimeout(db.collection("products").doc(p.id).set(p));
                 }
 
                 // Sembrar Configuración
-                await db.collection("settings").doc("main").set(initialConfig);
+                await withTimeout(db.collection("settings").doc("main").set(initialConfig));
 
                 console.log("🌱 [Firebase] Autosiembra completada con éxito.");
             }
@@ -155,7 +204,7 @@ const FirebaseService = {
         }
         try {
             console.log("[Firebase] Obteniendo productos de Firestore...");
-            const snapshot = await db.collection("products").get();
+            const snapshot = await withTimeout(db.collection("products").get());
             return snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
@@ -181,7 +230,7 @@ const FirebaseService = {
         try {
             const id = product.id;
             console.log("[Firebase] Guardando producto:", id);
-            await db.collection("products").doc(id).set(product);
+            await withTimeout(db.collection("products").doc(id).set(product));
         } catch (error) {
             console.error("[Firebase] Error al guardar producto:", error);
             throw error;
@@ -197,7 +246,7 @@ const FirebaseService = {
         }
         try {
             console.log("[Firebase] Eliminando producto:", id);
-            await db.collection("products").doc(id).delete();
+            await withTimeout(db.collection("products").doc(id).delete());
         } catch (error) {
             console.error("[Firebase] Error al eliminar producto:", error);
             throw error;
@@ -292,12 +341,26 @@ const FirebaseService = {
     async getConfig() {
         if (!isFirebaseActive) {
             const local = localStorage.getItem("curvys_config");
-            return local ? JSON.parse(local) : null;
+            const config = local ? JSON.parse(local) : null;
+            if (config && config.categories && !config.categories.includes("Camisas")) {
+                config.categories.push("Camisas");
+                localStorage.setItem("curvys_config", JSON.stringify(config));
+            }
+            return config;
         }
         try {
             console.log("[Firebase] Obteniendo configuraciones de Firestore...");
-            const doc = await db.collection("settings").doc("main").get();
-            return doc.exists ? doc.data() : null;
+            const doc = await withTimeout(db.collection("settings").doc("main").get());
+            if (doc.exists) {
+                const config = doc.data();
+                if (config && config.categories && !config.categories.includes("Camisas")) {
+                    config.categories.push("Camisas");
+                    await withTimeout(db.collection("settings").doc("main").set(config));
+                    console.log("🌱 [Firebase] Categoría 'Camisas' añadida automáticamente a las configuraciones.");
+                }
+                return config;
+            }
+            return null;
         } catch (error) {
             console.error("[Firebase] Error al obtener configuración:", error);
             throw error;
@@ -311,7 +374,7 @@ const FirebaseService = {
         }
         try {
             console.log("[Firebase] Guardando configuración general...");
-            await db.collection("settings").doc("main").set(configData);
+            await withTimeout(db.collection("settings").doc("main").set(configData));
         } catch (error) {
             console.error("[Firebase] Error al guardar configuración:", error);
             throw error;
@@ -329,15 +392,41 @@ const FirebaseService = {
                 reader.readAsDataURL(file);
             });
         }
+        
+        const isImage = file.type.startsWith("image/");
+        
         try {
-            console.log("[Firebase Storage] Subiendo archivo a Firebase Storage...");
+            console.log("[Firebase Storage] Intentando subir archivo a Firebase Storage...");
             const storageRef = firebase.storage().ref();
             const fileRef = storageRef.child(`products/${Date.now()}_${file.name}`);
-            const snapshot = await fileRef.put(file);
-            const downloadUrl = await snapshot.ref.getDownloadURL();
-            console.log("[Firebase Storage] Archivo subido exitosamente:", downloadUrl);
-            return downloadUrl;
+            
+            // Creamos una promesa de subida con un timeout de 4 segundos
+            const uploadPromise = (async () => {
+                const snapshot = await fileRef.put(file);
+                const downloadUrl = await snapshot.ref.getDownloadURL();
+                console.log("[Firebase Storage] Archivo subido exitosamente:", downloadUrl);
+                return downloadUrl;
+            })();
+            
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("timeout")), 4000)
+            );
+            
+            // Competimos el upload contra el timeout
+            return await Promise.race([uploadPromise, timeoutPromise]);
+            
         } catch (error) {
+            // Si el almacenamiento da error de permisos, cuota o excede el tiempo de espera (ej. Storage no habilitado)
+            if (isImage && (error.message === "timeout" || error.code === 'storage/unauthorized' || error.code === 'storage/retry-limit-exceeded' || error.code === 'storage/canceled')) {
+                console.warn("⚠️ [Firebase Storage] La subida a Storage falló o tardó demasiado. Usando compresión Base64 local como fallback...");
+                try {
+                    const base64Data = await compressImageHelper(file);
+                    return base64Data;
+                } catch (compressErr) {
+                    console.error("Error al comprimir imagen de respaldo:", compressErr);
+                }
+            }
+            
             console.error("[Firebase Storage] Error al subir archivo:", error);
             let friendlyMessage = "Error en el servidor de Firebase Storage.";
             if (error.code === 'storage/unauthorized') {
@@ -346,6 +435,8 @@ const FirebaseService = {
                 friendlyMessage = "Límite de cuota excedido. Puede que necesites actualizar al plan Blaze de Firebase.";
             } else if (error.message && (error.message.includes('Blaze') || error.message.includes('plan'))) {
                 friendlyMessage = "Subida fallida: Firebase requiere el plan Blaze para habilitar Cloud Storage.";
+            } else if (error.message === "timeout") {
+                friendlyMessage = "El servidor de Storage no responde. Si el problema persiste, revisa si habilitaste Cloud Storage en tu consola de Firebase.";
             }
             throw new Error(friendlyMessage);
         }
@@ -354,9 +445,9 @@ const FirebaseService = {
 
 window.FirebaseService = FirebaseService;
 
-// Inicialización de autosiembra al cargar la página
+// Inicialización de autosiembra al cargar la página (solo en modo Local / Sandbox)
 document.addEventListener("DOMContentLoaded", () => {
-    if (window.initialProducts && window.initialConfig) {
+    if (!FirebaseService.isCloudActive() && window.initialProducts && window.initialConfig) {
         FirebaseService.autoSeedDatabase(
             window.initialProducts,
             window.initialConfig

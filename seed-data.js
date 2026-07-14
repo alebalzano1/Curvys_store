@@ -76,8 +76,8 @@ const initialConfig = {
     whatsapp: "5491133224455", // Teléfono de prueba para WhatsApp
     instagram: "https://www.instagram.com/curvys.store_by_moni",
     shippingText: "Envíos a todo el país",
-    bannerText: "✨ Indumentaria de edición limitada — ¡Sé tu propia inspiración! ✨",
-    categories: ["Abrigos", "Blusas", "Pantalones", "Remeras", "Accesorios"],
+    bannerText: "✨ ¡Envíos gratis a todo el país en compras mayores a $50.000! 🚚✨",
+    categories: ["Abrigos", "Blusas", "Pantalones", "Remeras", "Accesorios", "Camisas"],
     
     // Tarifas de Envío por defecto
     shippingRates: {
