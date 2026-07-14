@@ -1,7 +1,8 @@
-﻿================================================================================
+﻿
+================================================================================
 FILE: firebase-config.js
 ================================================================================
-// ConfiguraciÃ³n de Firebase para Curvys Store by Moni
+// Configuración de Firebase para Curvys Store by Moni
 // Si deseas conectar una base de datos real en la nube, reemplaza los valores de abajo
 // con las credenciales de tu proyecto de Firebase.
 const firebaseConfig = {
@@ -16,41 +17,87 @@ const firebaseConfig = {
 window.firebaseConfig = firebaseConfig;
 
 
-
 ================================================================================
 FILE: firebase-service.js
 ================================================================================
 // Firebase & Storage Service para Curvys Store by Moni
-// SincronizaciÃ³n robusta en tiempo real con soporte de persistencia local (Sandbox)
+// Sincronización robusta en tiempo real con soporte de persistencia local (Sandbox)
 
 let db = null;
 let isFirebaseActive = false;
 
-// Inicializar Firebase si las credenciales son vÃ¡lidas
+// Inicializar Firebase si las credenciales son válidas
 try {
     const config = window.firebaseConfig;
     if (config && config.apiKey && config.apiKey !== "") {
         firebase.initializeApp(config);
         db = firebase.firestore();
         isFirebaseActive = true;
-        console.log("ðŸ”¥ [Firebase] ConexiÃ³n establecida con Ã©xito en la nube de Curvys Store.");
+        console.log("🔥 [Firebase] Conexión establecida con éxito en la nube de Curvys Store.");
     } else {
-        console.warn("âš ï¸ [Firebase] Corriendo en modo Local / Sandbox (LocalStorage). Configura las credenciales reales en firebase-config.js para conectar la base de datos en la nube.");
+        console.warn("⚠️ [Firebase] Corriendo en modo Local / Sandbox (LocalStorage). Configura las credenciales reales en firebase-config.js para conectar la base de datos en la nube.");
     }
 } catch (error) {
-    console.error("âŒ [Firebase] Error al inicializar Firebase:", error);
+    console.error("❌ [Firebase] Error al inicializar Firebase:", error);
+}
+
+// Función auxiliar para comprimir imágenes en el cliente (reduce el tamaño para guardarlo en Firestore si falla Storage)
+function compressImageHelper(file, maxWidth = 800, maxHeight = 800, quality = 0.7) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement("canvas");
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = Math.round((width * maxHeight) / height);
+                        height = maxHeight;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const dataUrl = canvas.toDataURL("image/jpeg", quality);
+                resolve(dataUrl);
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+    });
+}
+
+// Función auxiliar para forzar un límite de tiempo en las promesas de Firestore
+function withTimeout(promise, timeoutMs = 5000) {
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("timeout")), timeoutMs)
+    );
+    return Promise.race([promise, timeoutPromise]);
 }
 
 const FirebaseService = {
-    // --- DiagnÃ³stico de ConexiÃ³n ---
+    // --- Diagnóstico de Conexión ---
     isCloudActive() {
         return isFirebaseActive;
     },
 
-    // --- AUTENTICACIÃ“N ---
+    // --- AUTENTICACIÓN ---
     async login(email, password) {
         if (!isFirebaseActive) {
-            // SimulaciÃ³n local para el modo Sandbox
+            // Simulación local para el modo Sandbox
             const savedPassword = localStorage.getItem("curvys_admin_password_sandbox") || "curvysadmin";
             if (email === "admin@curvys.com" && password === savedPassword) {
                 const dummyUser = { email: "admin@curvys.com", uid: "sandbox-admin-uid" };
@@ -59,8 +106,8 @@ const FirebaseService = {
             } else {
                 const helperMsg = savedPassword === "curvysadmin" 
                     ? "(Usa admin@curvys.com / curvysadmin)" 
-                    : "(Usa admin@curvys.com / tu nueva contraseÃ±a)";
-                throw new Error(`Credenciales invÃ¡lidas para el Sandbox ${helperMsg}.`);
+                    : "(Usa admin@curvys.com / tu nueva contraseña)";
+                throw new Error(`Credenciales inválidas para el Sandbox ${helperMsg}.`);
             }
         }
         const auth = firebase.auth();
@@ -109,7 +156,7 @@ const FirebaseService = {
     // --- Autosiembra (Seeding) ---
     async autoSeedDatabase(initialProducts, initialConfig) {
         if (!isFirebaseActive) {
-            // Verificar si el almacenamiento local estÃ¡ vacÃ­o
+            // Verificar si el almacenamiento local está vacío
             const localProducts = localStorage.getItem("curvys_products");
             const localConfig = localStorage.getItem("curvys_config");
             if (!localProducts) {
@@ -121,19 +168,21 @@ const FirebaseService = {
             return;
         }
         try {
-            const productSnapshot = await db.collection("products").limit(1).get();
-            if (productSnapshot.empty) {
-                console.log("ðŸŒ± [Firebase] Base de datos vacÃ­a. Iniciando autosiembra para Curvys Store...");
+            // Para evitar volver a sembrar productos cuando el usuario decide eliminarlos todos,
+            // verificamos si la configuración principal 'settings/main' ya fue creada (indicando que ya se inicializó la BD).
+            const configDoc = await withTimeout(db.collection("settings").doc("main").get());
+            if (!configDoc.exists) {
+                console.log("🌱 [Firebase] Base de datos vacía. Iniciando autosiembra para Curvys Store...");
 
                 // Sembrar Productos
                 for (const p of initialProducts) {
-                    await db.collection("products").doc(p.id).set(p);
+                    await withTimeout(db.collection("products").doc(p.id).set(p));
                 }
 
-                // Sembrar ConfiguraciÃ³n
-                await db.collection("settings").doc("main").set(initialConfig);
+                // Sembrar Configuración
+                await withTimeout(db.collection("settings").doc("main").set(initialConfig));
 
-                console.log("ðŸŒ± [Firebase] Autosiembra completada con Ã©xito.");
+                console.log("🌱 [Firebase] Autosiembra completada con éxito.");
             }
         } catch (error) {
             // Ignorar silenciosamente si hay fallos de permisos (ej. no autenticado)
@@ -148,23 +197,23 @@ const FirebaseService = {
             return;
         }
         try {
-            console.log("âš ï¸ [Firebase] Iniciando limpieza total de productos...");
+            console.log("⚠️ [Firebase] Iniciando limpieza total de productos...");
             const snapshot = await db.collection("products").get();
             for (const doc of snapshot.docs) {
                 await db.collection("products").doc(doc.id).delete();
             }
 
-            console.log("ðŸŒ± [Firebase] Escribiendo catÃ¡logo oficial limpio...");
+            console.log("🌱 [Firebase] Escribiendo catálogo oficial limpio...");
             for (const p of initialProducts) {
                 await db.collection("products").doc(p.id).set(p);
             }
 
-            console.log("âš™ï¸ [Firebase] Escribiendo configuraciones comerciales por defecto...");
+            console.log("⚙️ [Firebase] Escribiendo configuraciones comerciales por defecto...");
             await db.collection("settings").doc("main").set(initialConfig);
 
-            console.log("âœ¨ [Firebase] Base de datos restablecida con Ã©xito.");
+            console.log("✨ [Firebase] Base de datos restablecida con éxito.");
         } catch (error) {
-            console.error("âŒ [Firebase] Error en restablecimiento forzado:", error);
+            console.error("❌ [Firebase] Error en restablecimiento forzado:", error);
             throw error;
         }
     },
@@ -177,7 +226,7 @@ const FirebaseService = {
         }
         try {
             console.log("[Firebase] Obteniendo productos de Firestore...");
-            const snapshot = await db.collection("products").get();
+            const snapshot = await withTimeout(db.collection("products").get());
             return snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
@@ -203,7 +252,7 @@ const FirebaseService = {
         try {
             const id = product.id;
             console.log("[Firebase] Guardando producto:", id);
-            await db.collection("products").doc(id).set(product);
+            await withTimeout(db.collection("products").doc(id).set(product));
         } catch (error) {
             console.error("[Firebase] Error al guardar producto:", error);
             throw error;
@@ -219,7 +268,7 @@ const FirebaseService = {
         }
         try {
             console.log("[Firebase] Eliminando producto:", id);
-            await db.collection("products").doc(id).delete();
+            await withTimeout(db.collection("products").doc(id).delete());
         } catch (error) {
             console.error("[Firebase] Error al eliminar producto:", error);
             throw error;
@@ -242,13 +291,13 @@ const FirebaseService = {
             }));
         } catch (error) {
             console.error("[Firebase] Error al obtener pedidos:", error);
-            // Fallback en caso de que falte Ã­ndice de ordenaciÃ³n
+            // Fallback en caso de que falte índice de ordenación
             try {
                 const snapshot = await db.collection("orders").get();
                 const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 return orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
             } catch (innerError) {
-                console.error("[Firebase] FallÃ³ el fallback de obtener pedidos:", innerError);
+                console.error("[Firebase] Falló el fallback de obtener pedidos:", innerError);
                 throw error;
             }
         }
@@ -310,18 +359,32 @@ const FirebaseService = {
         }
     },
 
-    // --- CONFIGURACIÃ“N GENERAL ---
+    // --- CONFIGURACIÓN GENERAL ---
     async getConfig() {
         if (!isFirebaseActive) {
             const local = localStorage.getItem("curvys_config");
-            return local ? JSON.parse(local) : null;
+            const config = local ? JSON.parse(local) : null;
+            if (config && config.categories && !config.categories.includes("Camisas")) {
+                config.categories.push("Camisas");
+                localStorage.setItem("curvys_config", JSON.stringify(config));
+            }
+            return config;
         }
         try {
             console.log("[Firebase] Obteniendo configuraciones de Firestore...");
-            const doc = await db.collection("settings").doc("main").get();
-            return doc.exists ? doc.data() : null;
+            const doc = await withTimeout(db.collection("settings").doc("main").get());
+            if (doc.exists) {
+                const config = doc.data();
+                if (config && config.categories && !config.categories.includes("Camisas")) {
+                    config.categories.push("Camisas");
+                    await withTimeout(db.collection("settings").doc("main").set(config));
+                    console.log("🌱 [Firebase] Categoría 'Camisas' añadida automáticamente a las configuraciones.");
+                }
+                return config;
+            }
+            return null;
         } catch (error) {
-            console.error("[Firebase] Error al obtener configuraciÃ³n:", error);
+            console.error("[Firebase] Error al obtener configuración:", error);
             throw error;
         }
     },
@@ -332,15 +395,15 @@ const FirebaseService = {
             return;
         }
         try {
-            console.log("[Firebase] Guardando configuraciÃ³n general...");
-            await db.collection("settings").doc("main").set(configData);
+            console.log("[Firebase] Guardando configuración general...");
+            await withTimeout(db.collection("settings").doc("main").set(configData));
         } catch (error) {
-            console.error("[Firebase] Error al guardar configuraciÃ³n:", error);
+            console.error("[Firebase] Error al guardar configuración:", error);
             throw error;
         }
     },
 
-    // --- SUBIDA DE IMÃGENES A FIREBASE STORAGE / SANDBOX ---
+    // --- SUBIDA DE IMÁGENES A FIREBASE STORAGE / SANDBOX ---
     async uploadImage(file) {
         if (!isFirebaseActive) {
             console.log("[Sandbox] Subiendo archivo localmente a base64...");
@@ -351,23 +414,51 @@ const FirebaseService = {
                 reader.readAsDataURL(file);
             });
         }
+        
+        const isImage = file.type.startsWith("image/");
+        
         try {
-            console.log("[Firebase Storage] Subiendo archivo a Firebase Storage...");
+            console.log("[Firebase Storage] Intentando subir archivo a Firebase Storage...");
             const storageRef = firebase.storage().ref();
             const fileRef = storageRef.child(`products/${Date.now()}_${file.name}`);
-            const snapshot = await fileRef.put(file);
-            const downloadUrl = await snapshot.ref.getDownloadURL();
-            console.log("[Firebase Storage] Archivo subido exitosamente:", downloadUrl);
-            return downloadUrl;
+            
+            // Creamos una promesa de subida con un timeout de 4 segundos
+            const uploadPromise = (async () => {
+                const snapshot = await fileRef.put(file);
+                const downloadUrl = await snapshot.ref.getDownloadURL();
+                console.log("[Firebase Storage] Archivo subido exitosamente:", downloadUrl);
+                return downloadUrl;
+            })();
+            
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("timeout")), 4000)
+            );
+            
+            // Competimos el upload contra el timeout
+            return await Promise.race([uploadPromise, timeoutPromise]);
+            
         } catch (error) {
+            // Si el almacenamiento da error de permisos, cuota o excede el tiempo de espera (ej. Storage no habilitado)
+            if (isImage && (error.message === "timeout" || error.code === 'storage/unauthorized' || error.code === 'storage/retry-limit-exceeded' || error.code === 'storage/canceled')) {
+                console.warn("⚠️ [Firebase Storage] La subida a Storage falló o tardó demasiado. Usando compresión Base64 local como fallback...");
+                try {
+                    const base64Data = await compressImageHelper(file);
+                    return base64Data;
+                } catch (compressErr) {
+                    console.error("Error al comprimir imagen de respaldo:", compressErr);
+                }
+            }
+            
             console.error("[Firebase Storage] Error al subir archivo:", error);
             let friendlyMessage = "Error en el servidor de Firebase Storage.";
             if (error.code === 'storage/unauthorized') {
                 friendlyMessage = "No autorizado. Verifica las Reglas de Seguridad en tu consola de Firebase Storage.";
             } else if (error.code === 'storage/quota-exceeded') {
-                friendlyMessage = "LÃ­mite de cuota excedido. Puede que necesites actualizar al plan Blaze de Firebase.";
+                friendlyMessage = "Límite de cuota excedido. Puede que necesites actualizar al plan Blaze de Firebase.";
             } else if (error.message && (error.message.includes('Blaze') || error.message.includes('plan'))) {
                 friendlyMessage = "Subida fallida: Firebase requiere el plan Blaze para habilitar Cloud Storage.";
+            } else if (error.message === "timeout") {
+                friendlyMessage = "El servidor de Storage no responde. Si el problema persiste, revisa si habilitaste Cloud Storage en tu consola de Firebase.";
             }
             throw new Error(friendlyMessage);
         }
@@ -376,16 +467,15 @@ const FirebaseService = {
 
 window.FirebaseService = FirebaseService;
 
-// InicializaciÃ³n de autosiembra al cargar la pÃ¡gina
+// Inicialización de autosiembra al cargar la página (solo en modo Local / Sandbox)
 document.addEventListener("DOMContentLoaded", () => {
-    if (window.initialProducts && window.initialConfig) {
+    if (!FirebaseService.isCloudActive() && window.initialProducts && window.initialConfig) {
         FirebaseService.autoSeedDatabase(
             window.initialProducts,
             window.initialConfig
         );
     }
 });
-
 
 
 ================================================================================
@@ -397,7 +487,7 @@ const initialProducts = [
     {
         id: "prod-1",
         name: "Sweter Lanilla Soft",
-        description: "Sweter de lanilla sÃºper suave, abrigado y con caÃ­da suelta. Ideal para un look casual y sÃºper cÃ³modo de uso diario. EdiciÃ³n limitada en talles amplios.",
+        description: "Sweter de lanilla súper suave, abrigado y con caída suelta. Ideal para un look casual y súper cómodo de uso diario. Edición limitada en talles amplios.",
         price: 18500,
         category: "Abrigos",
         sizes: ["L", "XL", "XXL"],
@@ -415,7 +505,7 @@ const initialProducts = [
     {
         id: "prod-2",
         name: "Blusa Violeta Abullonada",
-        description: "Blusa con cuello alto y mangas abullonadas en color violeta vibrante. Tejido sedoso y de excelente caÃ­da para lucir elegante y sofisticada. EdiciÃ³n limitada.",
+        description: "Blusa con cuello alto y mangas abullonadas en color violeta vibrante. Tejido sedoso y de excelente caída para lucir elegante y sofisticada. Edición limitada.",
         price: 15400,
         category: "Blusas",
         sizes: ["M", "L", "XL"],
@@ -432,7 +522,7 @@ const initialProducts = [
     {
         id: "prod-3",
         name: "Saco de Abrigo Confort",
-        description: "Saco tejido artesanalmente con hilados suaves y esponjosos de lanilla. Calentito, cÃ³modo y con gran elasticidad. DiseÃ±o exclusivo de la marca.",
+        description: "Saco tejido artesanalmente con hilados suaves y esponjosos de lanilla. Calentito, cómodo y con gran elasticidad. Diseño exclusivo de la marca.",
         price: 21500,
         category: "Abrigos",
         sizes: ["L", "XL", "XXL", "XXXL"],
@@ -448,8 +538,8 @@ const initialProducts = [
     },
     {
         id: "prod-4",
-        name: "PantalÃ³n Sastrero Curve",
-        description: "PantalÃ³n pinzado de tiro alto en gabardina elastizada premium. Confeccionado pensando en realzar las curvas con total comodidad.",
+        name: "Pantalón Sastrero Curve",
+        description: "Pantalón pinzado de tiro alto en gabardina elastizada premium. Confeccionado pensando en realzar las curvas con total comodidad.",
         price: 19800,
         category: "Pantalones",
         sizes: ["44", "46", "48", "50", "52"],
@@ -466,13 +556,13 @@ const initialProducts = [
 
 const initialConfig = {
     storeName: "Curvys.Store by Moni",
-    whatsapp: "5491133224455", // TelÃ©fono de prueba para WhatsApp
+    whatsapp: "5491133224455", // Teléfono de prueba para WhatsApp
     instagram: "https://www.instagram.com/curvys.store_by_moni",
-    shippingText: "EnvÃ­os a todo el paÃ­s",
-    bannerText: "âœ¨ Indumentaria de ediciÃ³n limitada â€” Â¡SÃ© tu propia inspiraciÃ³n! âœ¨",
-    categories: ["Abrigos", "Blusas", "Pantalones", "Remeras", "Accesorios"],
+    shippingText: "Envíos a todo el país",
+    bannerText: "✨ ¡Envíos gratis a todo el país en compras mayores a $50.000! 🚚✨",
+    categories: ["Abrigos", "Blusas", "Pantalones", "Remeras", "Accesorios", "Camisas"],
     
-    // Tarifas de EnvÃ­o por defecto
+    // Tarifas de Envío por defecto
     shippingRates: {
         retiro: 0,
         moto: 1500,
@@ -498,7 +588,6 @@ window.initialProducts = initialProducts;
 window.initialConfig = initialConfig;
 
 
-
 ================================================================================
 FILE: app.js
 ================================================================================
@@ -514,10 +603,10 @@ let selectedSize = "";
 let currentProductImages = [];
 let currentImageIndex = 0;
 
-// Variables de las nuevas caracterÃ­sticas
+// Variables de las nuevas características
 let currentTheme = "dark";
 let activeFavoritesFilter = false;
-let activeCoupon = null; // AlmacenarÃ¡ { code: "CURVYS10", percent: 10 }
+let activeCoupon = null; // Almacenará { code: "CURVYS10", percent: 10 }
 let sizeGuideVisible = false;
 let selectedShippingMethod = "retiro";
 let favoritesList = [];
@@ -567,7 +656,7 @@ const DOM = {
     modalSizes: document.getElementById("modal-sizes"),
     modalAddToCart: document.getElementById("modal-add-to-cart"),
 
-    // GuÃ­a de Talles
+    // Guía de Talles
     btnSizeGuide: document.getElementById("btn-size-guide"),
     sizeGuideContainer: document.getElementById("size-guide-container"),
     sizeGuideRows: document.getElementById("size-guide-rows"),
@@ -588,7 +677,7 @@ const DOM = {
     heroSlidesContainer: document.getElementById("hero-slides-container"),
     favFilterBtn: document.getElementById("fav-filter-btn"),
     
-    // Banner e InformaciÃ³n General
+    // Banner e Información General
     bannerText: document.getElementById("banner-text"),
     heroTitle: document.getElementById("hero-title"),
     heroDesc: document.getElementById("hero-desc"),
@@ -598,10 +687,10 @@ const DOM = {
     instagramLink: document.getElementById("instagram-link")
 };
 
-// InicializaciÃ³n de la aplicaciÃ³n
+// Inicialización de la aplicación
 async function initApp() {
     try {
-        console.log("ðŸš€ [App] Inicializando tienda...");
+        console.log("🚀 [App] Inicializando tienda...");
         
         // Cargar Carrito y Favoritos
         loadCart();
@@ -611,8 +700,8 @@ async function initApp() {
         products = await FirebaseService.getProducts();
         storeConfig = await FirebaseService.getConfig();
 
-        // CaÃ­das de seguridad en caso de base de datos vacÃ­a o carga demorada
-        if (!products || products.length === 0) {
+        // Caídas de seguridad en caso de carga fallida (null o undefined)
+        if (products === null || products === undefined) {
             products = window.initialProducts || [];
         }
         if (!storeConfig || Object.keys(storeConfig).length === 0) {
@@ -626,7 +715,7 @@ async function initApp() {
         // Iniciar Slider
         startHeroSlider();
 
-        // Renderizar CategorÃ­as y Productos
+        // Renderizar Categorías y Productos
         renderCategories();
         renderProducts();
         updateCartUI();
@@ -635,7 +724,7 @@ async function initApp() {
         registerEventListeners();
 
     } catch (error) {
-        console.error("âŒ [App] Error al inicializar la tienda:", error);
+        console.error("❌ [App] Error al inicializar la tienda:", error);
         showToast("Error al cargar la tienda. Usando datos de respaldo.");
         
         // Cargamos de respaldo inmediato
@@ -655,8 +744,8 @@ async function initApp() {
 function applyStoreConfig() {
     if (DOM.bannerText) DOM.bannerText.textContent = storeConfig.bannerText || "";
     if (DOM.heroTitle) DOM.heroTitle.textContent = storeConfig.storeName || "Curvys.Store by Moni";
-    if (DOM.heroDesc) DOM.heroDesc.textContent = storeConfig.shippingText ? `ðŸ‘— EdiciÃ³n limitada | ðŸ“¦ ${storeConfig.shippingText}` : "ðŸ‘— EdiciÃ³n limitada | EnvÃ­os a todo el paÃ­s";
-    if (DOM.footerAbout) DOM.footerAbout.textContent = `Indumentaria de diseÃ±o y ediciÃ³n limitada. ConfecciÃ³n artesanal pensada para realzar tus curvas y hacerte lucir fantÃ¡stica. ${storeConfig.shippingText || "EnvÃ­os a todo el paÃ­s."}`;
+    if (DOM.heroDesc) DOM.heroDesc.textContent = storeConfig.shippingText ? `👗 Edición limitada | 📦 ${storeConfig.shippingText}` : "👗 Edición limitada | Envíos a todo el país";
+    if (DOM.footerAbout) DOM.footerAbout.textContent = `Indumentaria de diseño y edición limitada. Confección artesanal pensada para realzar tus curvas y hacerte lucir fantástica. ${storeConfig.shippingText || "Envíos a todo el país."}`;
     
     // Configurar enlaces sociales
     if (DOM.instagramLink) DOM.instagramLink.href = storeConfig.instagram || "#";
@@ -758,11 +847,11 @@ function registerEventListeners() {
             activeFavoritesFilter = !activeFavoritesFilter;
             if (activeFavoritesFilter) {
                 DOM.favFilterBtn.classList.add("active");
-                // Desactivar clase activa en botones de categorÃ­as comunes
+                // Desactivar clase activa en botones de categorías comunes
                 document.querySelectorAll(".category-btn:not(.fav-filter-btn)").forEach(b => b.classList.remove("active"));
             } else {
                 DOM.favFilterBtn.classList.remove("active");
-                // Volver a activar categorÃ­a seleccionada
+                // Volver a activar categoría seleccionada
                 const catBtns = document.querySelectorAll(".category-btn:not(.fav-filter-btn)");
                 catBtns.forEach(btn => {
                     if (btn.textContent === activeCategory) btn.classList.add("active");
@@ -772,7 +861,7 @@ function registerEventListeners() {
         });
     }
 
-    // GuÃ­a de Talles Toggle
+    // Guía de Talles Toggle
     if (DOM.btnSizeGuide) {
         DOM.btnSizeGuide.addEventListener("click", () => {
             sizeGuideVisible = !sizeGuideVisible;
@@ -782,12 +871,12 @@ function registerEventListeners() {
                 renderSizeGuide();
             } else {
                 DOM.sizeGuideContainer.style.display = "none";
-                DOM.btnSizeGuide.textContent = "GuÃ­a de Talles";
+                DOM.btnSizeGuide.textContent = "Guía de Talles";
             }
         });
     }
 
-    // Aplicar CupÃ³n
+    // Aplicar Cupón
     if (DOM.btnApplyCoupon) {
         DOM.btnApplyCoupon.addEventListener("click", () => {
             const code = DOM.couponInput.value.trim().toUpperCase();
@@ -801,26 +890,26 @@ function registerEventListeners() {
             const coupons = storeConfig.coupons || {};
             if (coupons[code] !== undefined) {
                 activeCoupon = { code: code, percent: coupons[code] };
-                DOM.couponMessage.textContent = `âœ“ Â¡CupÃ³n ${code} aplicado! (${coupons[code]}% OFF)`;
+                DOM.couponMessage.textContent = `✓ ¡Cupón ${code} aplicado! (${coupons[code]}% OFF)`;
                 DOM.couponMessage.style.color = "#10b981";
-                showToast(`ðŸŽŸï¸ CupÃ³n aplicado: ${coupons[code]}% de descuento`);
+                showToast(`🎟️ Cupón aplicado: ${coupons[code]}% de descuento`);
             } else {
                 activeCoupon = null;
-                DOM.couponMessage.textContent = "âœ— CÃ³digo de cupÃ³n invÃ¡lido";
+                DOM.couponMessage.textContent = "✗ Código de cupón inválido";
                 DOM.couponMessage.style.color = "#ef4444";
             }
             updateCartUI();
         });
     }
 
-    // Cambios en MÃ©todo de Entrega
+    // Cambios en Método de Entrega
     const shippingSelect = document.getElementById("client-shipping");
     const addressGroup = document.getElementById("address-group");
     if (shippingSelect) {
         shippingSelect.addEventListener("change", (e) => {
             selectedShippingMethod = e.target.value;
             
-            // Mostrar u ocultar campo de direcciÃ³n
+            // Mostrar u ocultar campo de dirección
             if (selectedShippingMethod === "correo") {
                 if (addressGroup) addressGroup.style.display = "flex";
                 document.getElementById("client-address").required = true;
@@ -830,13 +919,13 @@ function registerEventListeners() {
                 document.getElementById("client-address").value = "";
             }
             
-            // Actualizar etiqueta del costo de envÃ­o
+            // Actualizar etiqueta del costo de envío
             const rates = storeConfig.shippingRates || { retiro: 0, moto: 1500, correo: 3500 };
             const cost = rates[selectedShippingMethod] || 0;
             if (DOM.shippingCostLabel) {
                 DOM.shippingCostLabel.textContent = cost > 0 
-                    ? `EnvÃ­o: $${cost.toLocaleString('es-AR')}`
-                    : `EnvÃ­o: Gratis`;
+                    ? `Envío: $${cost.toLocaleString('es-AR')}`
+                    : `Envío: Gratis`;
             }
             
             updateCartUI();
@@ -852,7 +941,7 @@ function registerEventListeners() {
     }
 }
 
-// Renderizar barra de categorÃ­as
+// Renderizar barra de categorías
 function renderCategories() {
     if (!DOM.categoriesScroll) return;
     
@@ -864,12 +953,12 @@ function renderCategories() {
         btn.className = `category-btn ${cat === activeCategory && !activeFavoritesFilter ? 'active' : ''}`;
         btn.textContent = cat;
         btn.addEventListener("click", () => {
-            // Cambiar categorÃ­a activa
+            // Cambiar categoría activa
             document.querySelectorAll(".category-btn").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
             activeCategory = cat;
             
-            // Desactivar filtro de favoritos al pulsar categorÃ­a
+            // Desactivar filtro de favoritos al pulsar categoría
             activeFavoritesFilter = false;
             if (DOM.favFilterBtn) DOM.favFilterBtn.classList.remove("active");
             
@@ -895,7 +984,7 @@ function renderProducts() {
         return (activeFavoritesFilter ? matchesFavorites : matchesCategory) && matchesSearch;
     });
 
-    // Ordenar productos segÃºn el criterio seleccionado
+    // Ordenar productos según el criterio seleccionado
     if (currentSort === "price-asc") {
         filteredProducts.sort((a, b) => a.price - b.price);
     } else if (currentSort === "price-desc") {
@@ -917,7 +1006,7 @@ function renderProducts() {
                     <line x1="8" y1="12" x2="16" y2="12"></line>
                 </svg>
                 <h3>No se encontraron productos</h3>
-                <p>${activeFavoritesFilter ? 'No has agregado ningÃºn producto a tus favoritos todavÃ­a.' : 'Prueba buscando con otros tÃ©rminos o seleccionando otra categorÃ­a.'}</p>
+                <p>${activeFavoritesFilter ? 'No has agregado ningún producto a tus favoritos todavía.' : 'Prueba buscando con otros términos o seleccionando otra categoría.'}</p>
             </div>
         `;
         return;
@@ -930,9 +1019,9 @@ function renderProducts() {
         // Generar badges
         let badgesHtml = "";
         if (product.isLimited && product.inStock) {
-            badgesHtml += `<span class="badge badge-urgency">ðŸ”¥ Ãšltimas unidades</span>`;
+            badgesHtml += `<span class="badge badge-urgency">🔥 Últimas unidades</span>`;
         } else if (product.isLimited) {
-            badgesHtml += `<span class="badge badge-limited">EdiciÃ³n Limitada</span>`;
+            badgesHtml += `<span class="badge badge-limited">Edición Limitada</span>`;
         }
         if (!product.inStock) {
             badgesHtml += `<span class="badge badge-outofstock">Sin Stock</span>`;
@@ -944,7 +1033,7 @@ function renderProducts() {
             <div class="product-card-media" style="cursor: pointer; position: relative;">
                 <div class="card-badges">${badgesHtml}</div>
                 
-                <!-- BotÃ³n de Favorito -->
+                <!-- Botón de Favorito -->
                 <button class="btn-favorite ${isFav ? 'active' : ''}" data-id="${product.id}" title="${isFav ? 'Quitar de favoritos' : 'Agregar a favoritos'}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
@@ -969,7 +1058,7 @@ function renderProducts() {
             </div>
         `;
 
-        // Click en la tarjeta o botÃ³n agregar abre el modal de detalles
+        // Click en la tarjeta o botón agregar abre el modal de detalles
         const media = card.querySelector(".product-card-media");
         const addBtn = card.querySelector(".btn-card-add");
         const favBtn = card.querySelector(".btn-favorite");
@@ -1004,7 +1093,7 @@ function openProductModal(product) {
     DOM.modalPrice.textContent = `$${product.price.toLocaleString('es-AR')}`;
     DOM.modalDesc.textContent = product.description;
     
-    // Alerta de urgencia por ediciÃ³n limitada / stock crÃ­tico
+    // Alerta de urgencia por edición limitada / stock crítico
     const modalInfo = DOM.modalOverlay ? DOM.modalOverlay.querySelector(".modal-info") : null;
     if (modalInfo) {
         const existingUrgency = modalInfo.querySelector(".detail-urgency-msg");
@@ -1017,7 +1106,7 @@ function openProductModal(product) {
             urgencyDiv.className = "detail-urgency-msg";
             urgencyDiv.innerHTML = `
                 <i data-lucide="flame" style="width: 16px; height: 16px;"></i>
-                <span>Â¡EdiciÃ³n Exclusiva! Ãšltimas unidades disponibles en stock.</span>
+                <span>¡Edición Exclusiva! Últimas unidades disponibles en stock.</span>
             `;
             const sizeSelector = modalInfo.querySelector(".size-selector-wrap");
             if (sizeSelector) {
@@ -1031,18 +1120,18 @@ function openProductModal(product) {
         }
     }
     
-    // Asegurar que el reproductor de video estÃ© oculto y reiniciado
+    // Asegurar que el reproductor de video esté oculto y reiniciado
     closeVideoPlayer();
     
-    // Resetear estado de la guÃ­a de talles
+    // Resetear estado de la guía de talles
     sizeGuideVisible = false;
     if (DOM.sizeGuideContainer) DOM.sizeGuideContainer.style.display = "none";
-    if (DOM.btnSizeGuide) DOM.btnSizeGuide.textContent = "GuÃ­a de Talles";
+    if (DOM.btnSizeGuide) DOM.btnSizeGuide.textContent = "Guía de Talles";
     
-    // Guardar referencia del producto actual para la guÃ­a de talles
+    // Guardar referencia del producto actual para la guía de talles
     DOM.currentModalProduct = product;
     
-    // Configurar Carrusel de ImÃ¡genes
+    // Configurar Carrusel de Imágenes
     currentImageIndex = 0;
     currentProductImages = (product.images && Array.isArray(product.images) && product.images.length > 0)
         ? product.images
@@ -1060,7 +1149,7 @@ function openProductModal(product) {
             img.alt = `${product.name} - Imagen ${idx + 1}`;
             img.className = "carousel-img";
             
-            // Efecto lupa dinÃ¡mico
+            // Efecto lupa dinámico
             imgContainer.addEventListener("mousemove", (e) => {
                 const rect = imgContainer.getBoundingClientRect();
                 const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -1097,7 +1186,7 @@ function openProductModal(product) {
         }
     }
     
-    // Mostrar u ocultar controles de navegaciÃ³n
+    // Mostrar u ocultar controles de navegación
     if (DOM.carouselPrev && DOM.carouselNext) {
         if (currentProductImages.length > 1) {
             DOM.carouselPrev.style.display = "flex";
@@ -1138,16 +1227,16 @@ function openProductModal(product) {
             DOM.modalSizes.appendChild(chip);
         });
         
-        // Seleccionar automÃ¡ticamente el primero
+        // Seleccionar automáticamente el primero
         if (DOM.modalSizes.firstChild) {
             DOM.modalSizes.firstChild.click();
         }
     } else {
-        DOM.modalSizes.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">Talle Ãºnico</p>`;
-        selectedSize = "Ãšnico";
+        DOM.modalSizes.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">Talle único</p>`;
+        selectedSize = "Único";
     }
 
-    // Configurar acciÃ³n de botÃ³n agregar
+    // Configurar acción de botón agregar
     DOM.modalAddToCart.disabled = !product.inStock;
     if (!product.inStock) {
         DOM.modalAddToCart.textContent = "Sin Stock";
@@ -1171,7 +1260,7 @@ function openProductModal(product) {
     toggleDetailModal(true);
 }
 
-// Actualizar posiciÃ³n del carrusel y puntos activos
+// Actualizar posición del carrusel y puntos activos
 function updateCarousel() {
     if (!DOM.carouselTrack) return;
     const offset = -currentImageIndex * 100;
@@ -1222,7 +1311,7 @@ function toggleCartDrawer(open) {
     }
 }
 
-// LÃ“GICA DEL CARRITO
+// LÓGICA DEL CARRITO
 
 function addToCart(product, size) {
     const existingIndex = cart.findIndex(item => item.id === product.id && item.size === size);
@@ -1243,7 +1332,7 @@ function addToCart(product, size) {
     saveCart();
     updateCartUI();
     toggleCartDrawer(true);
-    showToast(`ðŸ›ï¸ Agregado: ${product.name} (Talle ${size})`);
+    showToast(`🛍️ Agregado: ${product.name} (Talle ${size})`);
 }
 
 function updateCartQuantity(id, size, change) {
@@ -1292,8 +1381,8 @@ function updateCartUI() {
                     <circle cx="20" cy="21" r="1"></circle>
                     <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
                 </svg>
-                <h3>Tu carrito estÃ¡ vacÃ­o</h3>
-                <p>Explora nuestro catÃ¡logo exclusivo y agrega las prendas que te encanten.</p>
+                <h3>Tu carrito está vacío</h3>
+                <p>Explora nuestro catálogo exclusivo y agrega las prendas que te encanten.</p>
             </div>
         `;
         // Ocultar formulario de compra
@@ -1334,7 +1423,7 @@ function updateCartUI() {
         });
     }
     
-    // Calcular descuento por cupÃ³n
+    // Calcular descuento por cupón
     let discount = 0;
     if (activeCoupon && subtotal > 0) {
         discount = subtotal * (activeCoupon.percent / 100);
@@ -1345,7 +1434,7 @@ function updateCartUI() {
         if (DOM.cartDiscountRow) DOM.cartDiscountRow.style.display = "none";
     }
     
-    // Calcular costo de envÃ­o
+    // Calcular costo de envío
     const rates = storeConfig.shippingRates || { retiro: 0, moto: 1500, correo: 3500 };
     const shippingCost = subtotal > 0 ? (rates[selectedShippingMethod] || 0) : 0;
     
@@ -1384,7 +1473,7 @@ async function sendWhatsAppOrder() {
     }
     
     if (envio === "correo" && !direccion) {
-        showToast("Por favor ingresa una direcciÃ³n para el envÃ­o.");
+        showToast("Por favor ingresa una dirección para el envío.");
         return;
     }
 
@@ -1395,51 +1484,51 @@ async function sendWhatsAppOrder() {
     cart.forEach(item => {
         const itemSubtotal = item.price * item.quantity;
         subtotal += itemSubtotal;
-        itemsText += `â€¢ *${item.quantity}x* ${item.name}\n  Talle: ${item.size} | Subtotal: $${itemSubtotal.toLocaleString('es-AR')}\n\n`;
+        itemsText += `• *${item.quantity}x* ${item.name}\n  Talle: ${item.size} | Subtotal: $${itemSubtotal.toLocaleString('es-AR')}\n\n`;
     });
     
-    // Calcular descuento de cupÃ³n
+    // Calcular descuento de cupón
     let discount = 0;
     let couponText = "";
     if (activeCoupon) {
         discount = subtotal * (activeCoupon.percent / 100);
-        couponText = `- *CupÃ³n Aplicado:* ${activeCoupon.code} (${activeCoupon.percent}% OFF)\n- *Descuento:* -$${discount.toLocaleString('es-AR')}\n`;
+        couponText = `- *Cupón Aplicado:* ${activeCoupon.code} (${activeCoupon.percent}% OFF)\n- *Descuento:* -$${discount.toLocaleString('es-AR')}\n`;
     }
     
-    // Calcular costo de envÃ­o
+    // Calcular costo de envío
     const rates = storeConfig.shippingRates || { retiro: 0, moto: 1500, correo: 3500 };
     const shippingCost = rates[envio] || 0;
     
     const finalTotal = Math.max(0, subtotal - discount + shippingCost);
     
     // Construir mensaje amigable
-    let mensaje = `ðŸŒ¸ *Pedido - Curvys Store by Moni* ðŸŒ¸\n\n`;
+    let mensaje = `🌸 *Pedido - Curvys Store by Moni* 🌸\n\n`;
     mensaje += `Hola Moni! Me interesa realizar este pedido:\n`;
     mensaje += `-----------------------------------------\n`;
     mensaje += itemsText;
     mensaje += `-----------------------------------------\n`;
-    mensaje += `ðŸ’µ *Subtotal prendas:* $${subtotal.toLocaleString('es-AR')}\n`;
+    mensaje += `💵 *Subtotal prendas:* $${subtotal.toLocaleString('es-AR')}\n`;
     if (discount > 0) {
-        mensaje += `ðŸŽŸï¸ *Descuento (${activeCoupon.percent}%):* -$${discount.toLocaleString('es-AR')}\n`;
+        mensaje += `🎟️ *Descuento (${activeCoupon.percent}%):* -$${discount.toLocaleString('es-AR')}\n`;
     }
-    mensaje += `ðŸ“¦ *Costo de envÃ­o:* ${shippingCost > 0 ? `$${shippingCost.toLocaleString('es-AR')}` : 'Gratis'}\n`;
-    mensaje += `ðŸ’° *Total del Pedido: $${finalTotal.toLocaleString('es-AR')}*\n\n`;
+    mensaje += `📦 *Costo de envío:* ${shippingCost > 0 ? `$${shippingCost.toLocaleString('es-AR')}` : 'Gratis'}\n`;
+    mensaje += `💰 *Total del Pedido: $${finalTotal.toLocaleString('es-AR')}*\n\n`;
     
-    mensaje += `ðŸ‘¤ *Datos del Cliente:*\n`;
+    mensaje += `👤 *Datos del Cliente:*\n`;
     mensaje += `- *Nombre:* ${nombre}\n`;
-    let metodoEnvioText = "ðŸ¢ Retiro en tienda (Gratis)";
-    if (envio === "moto") metodoEnvioText = "ðŸ›µ EnvÃ­o por Moto Express";
-    if (envio === "correo") metodoEnvioText = "ðŸ“¦ EnvÃ­o por Correo (Todo el paÃ­s)";
+    let metodoEnvioText = "🏢 Retiro en tienda (Gratis)";
+    if (envio === "moto") metodoEnvioText = "🛵 Envío por Moto Express";
+    if (envio === "correo") metodoEnvioText = "📦 Envío por Correo (Todo el país)";
     mensaje += `- *Entrega:* ${metodoEnvioText}\n`;
     
     if (envio === 'correo') {
-        mensaje += `- *DirecciÃ³n:* ${direccion}\n`;
+        mensaje += `- *Dirección:* ${direccion}\n`;
     }
     if (notas) {
         mensaje += `- *Notas/Talle personalizado:* ${notas}\n`;
     }
     
-    mensaje += `\nðŸ›’ _Pedido generado desde la web tienda._`;
+    mensaje += `\n🛒 _Pedido generado desde la web tienda._`;
 
     // 1. Guardar en Base de Datos (Firestore o LocalStorage)
     const orderData = {
@@ -1465,19 +1554,19 @@ async function sendWhatsAppOrder() {
 
     try {
         await FirebaseService.saveOrder(orderData);
-        console.log("ðŸ’¾ Pedido registrado con Ã©xito en la base de datos.");
+        console.log("💾 Pedido registrado con éxito en la base de datos.");
     } catch (dbErr) {
-        console.error("âš ï¸ Error al registrar pedido en la base de datos:", dbErr);
+        console.error("⚠️ Error al registrar pedido en la base de datos:", dbErr);
     }
 
-    // Obtener telÃ©fono de destino (eliminar caracteres raros)
+    // Obtener teléfono de destino (eliminar caracteres raros)
     const phone = (storeConfig.whatsapp || "5491133224455").replace(/[^0-9]/g, "");
     
     // Generar url de WhatsApp moderna
     const encodedText = encodeURIComponent(mensaje);
     const whatsappUrl = `https://wa.me/${phone}?text=${encodedText}`;
     
-    // Abrir enlace en nueva pestaÃ±a
+    // Abrir enlace en nueva pestaña
     window.open(whatsappUrl, "_blank");
     
     // Vaciar Carrito
@@ -1491,7 +1580,7 @@ async function sendWhatsAppOrder() {
     
     // Limpiar formulario
     DOM.checkoutForm.reset();
-    showToast("Â¡Redirigiendo a WhatsApp para finalizar tu compra! ðŸŽ‰");
+    showToast("¡Redirigiendo a WhatsApp para finalizar tu compra! 🎉");
 }
 
 // Sistema de Notificaciones Flotantes (Toasts)
@@ -1514,10 +1603,10 @@ function showToast(message) {
     
     container.appendChild(toast);
     
-    // Disparar animaciÃ³n
+    // Disparar animación
     setTimeout(() => toast.classList.add("show"), 50);
     
-    // Remover despuÃ©s de 3.5 segundos
+    // Remover después de 3.5 segundos
     setTimeout(() => {
         toast.classList.remove("show");
         setTimeout(() => toast.remove(), 300);
@@ -1554,12 +1643,12 @@ function setTheme(theme) {
     if (window.lucide) window.lucide.createIcons();
 }
 
-// 2. HERO SLIDER AUTOMÃTICO
+// 2. HERO SLIDER AUTOMÁTICO
 let sliderInterval = null;
 function startHeroSlider() {
     if (sliderInterval) clearInterval(sliderInterval);
     
-    // Crear dinÃ¡micamente diapositivas de fondo del Hero si existen en configuraciÃ³n
+    // Crear dinámicamente diapositivas de fondo del Hero si existen en configuración
     if (DOM.heroSlidesContainer && storeConfig.heroSlides && storeConfig.heroSlides.length > 0) {
         DOM.heroSlidesContainer.innerHTML = "";
         storeConfig.heroSlides.forEach((slideUrl, idx) => {
@@ -1604,11 +1693,11 @@ function toggleFavorite(id, buttonEl) {
     } else {
         favoritesList.push(id);
         buttonEl.classList.add("active");
-        showToast("â¤ï¸ Â¡Agregado a favoritos!");
+        showToast("❤️ ¡Agregado a favoritos!");
     }
     saveFavorites();
     
-    // Si el filtro de favoritos estÃ¡ activo, re-renderizar para ocultar la tarjeta
+    // Si el filtro de favoritos está activo, re-renderizar para ocultar la tarjeta
     if (activeFavoritesFilter) {
         renderProducts();
     }
@@ -1663,18 +1752,17 @@ function renderSizeGuide() {
         DOM.sizeGuideRows.innerHTML = `
             <tr>
                 <td colspan="4" style="padding: 10px 4px; text-align: center; color: var(--text-muted);">
-                    Esta prenda es de talle Ãºnico adaptable y suelto (se adapta desde un talle M a un XXL).
+                    Esta prenda es de talle único adaptable y suelto (se adapta desde un talle M a un XXL).
                 </td>
             </tr>
         `;
     }
 }
 
-// InicializaciÃ³n del DOM
+// Inicialización del DOM
 document.addEventListener("DOMContentLoaded", () => {
     initApp();
 });
-
 
 
 ================================================================================
@@ -1694,8 +1782,8 @@ let currentUploadedVideoUrl = "";
 let selectedAdminSizes = [];
 let searchOrdersQuery = "";
 let filterOrdersStatusValue = "Todos";
-const predefinedSizes = ["S", "M", "L", "XL", "XXL", "XXXL", "38", "40", "42", "44", "46", "48", "50", "52", "Ãšnico"];
-let customSizes = []; // talles personalizados agregados en la sesiÃ³n
+const predefinedSizes = ["S", "M", "L", "XL", "XXL", "XXXL", "38", "40", "42", "44", "46", "48", "50", "52", "Único"];
+let customSizes = []; // talles personalizados agregados en la sesión
 
 // Elementos del DOM del Panel Administrador
 const DOM = {
@@ -1707,7 +1795,7 @@ const DOM = {
     loginForm: document.getElementById("login-form"),
     btnLogout: document.getElementById("btn-logout"),
     
-    // NavegaciÃ³n de PestaÃ±as
+    // Navegación de Pestañas
     tabBtns: document.querySelectorAll(".admin-tab-btn"),
     panels: document.querySelectorAll(".admin-panel"),
     
@@ -1739,7 +1827,7 @@ const DOM = {
     customTalleInput: document.getElementById("custom-talle-input"),
     btnAddCustomTalle: document.getElementById("btn-add-custom-talle"),
     
-    // EstadÃ­sticas
+    // Estadísticas
     statTotalSales: document.getElementById("stat-total-sales"),
     statPendingOrders: document.getElementById("stat-pending-orders"),
     statOutofstockProducts: document.getElementById("stat-outofstock-products"),
@@ -1749,17 +1837,17 @@ const DOM = {
     filterOrdersStatus: document.getElementById("filter-orders-status"),
     btnExportOrdersCsv: document.getElementById("btn-export-orders-csv"),
     
-    // CategorÃ­as
+    // Categorías
     adminCategoriesList: document.getElementById("admin-categories-list"),
     formAddCategory: document.getElementById("form-add-category"),
     newCategoryInput: document.getElementById("new-category-name"),
     
-    // ConfiguraciÃ³n General
+    // Configuración General
     settingsForm: document.getElementById("settings-form"),
     passwordChangeForm: document.getElementById("password-change-form"),
     btnResetDb: document.getElementById("btn-reset-db"),
 
-    // ConfiguraciÃ³n Comercial (EnvÃ­os y Cupones)
+    // Configuración Comercial (Envíos y Cupones)
     shippingRatesForm: document.getElementById("shipping-rates-form"),
     shipRetiroInput: document.getElementById("ship-retiro"),
     shipMotoInput: document.getElementById("ship-moto"),
@@ -1774,14 +1862,24 @@ const DOM = {
 let previousOrdersCount = 0;
 let isFirstLoad = true;
 
-// InicializaciÃ³n del Panel Administrador
+// Inicialización del Panel Administrador
 function initAdmin() {
-    // 1. Escuchar el estado de autenticaciÃ³n
-    FirebaseService.onAuth((user) => {
+    // 1. Escuchar el estado de autenticación
+    FirebaseService.onAuth(async (user) => {
         if (user) {
             // Usuario autenticado
             DOM.loginSection.style.display = "none";
             DOM.adminDashboard.style.display = "block";
+            
+            // Si estamos en modo nube, ejecutamos la autosiembra ahora de forma segura con el admin ya autenticado.
+            if (FirebaseService.isCloudActive() && window.initialProducts && window.initialConfig) {
+                try {
+                    await FirebaseService.autoSeedDatabase(window.initialProducts, window.initialConfig);
+                } catch (err) {
+                    console.error("Error al intentar autosembrar la base de datos:", err);
+                }
+            }
+            
             loadDashboardData();
         } else {
             // No autenticado
@@ -1797,16 +1895,16 @@ function initAdmin() {
     registerEventListeners();
 }
 
-// Cargar informaciÃ³n en el dashboard
+// Cargar información en el dashboard
 async function loadDashboardData() {
     try {
-        console.log("ðŸ“¥ [Admin] Cargando datos del panel...");
+        console.log("📥 [Admin] Cargando datos del panel...");
         allProducts = await FirebaseService.getProducts() || [];
         allOrders = await FirebaseService.getOrders() || [];
         settings = await FirebaseService.getConfig() || {};
         
-        // CaÃ­das de seguridad en local / sandbox
-        if (allProducts.length === 0 && window.initialProducts) {
+        // Caídas de seguridad en caso de carga fallida (null o undefined)
+        if ((allProducts === null || allProducts === undefined) && window.initialProducts) {
             allProducts = window.initialProducts;
         }
         if (Object.keys(settings).length === 0 && window.initialConfig) {
@@ -1815,9 +1913,9 @@ async function loadDashboardData() {
 
         // Alerta Sonora para Nuevos Pedidos
         if (!isFirstLoad && allOrders.length > previousOrdersCount) {
-            console.log("ðŸ”” [Admin] Â¡Nuevo pedido detectado! Reproduciendo sonido.");
+            console.log("🔔 [Admin] ¡Nuevo pedido detectado! Reproduciendo sonido.");
             playNewOrderSound();
-            showToast("ðŸ”” Â¡Ha ingresado un nuevo pedido!");
+            showToast("🔔 ¡Ha ingresado un nuevo pedido!");
         }
         previousOrdersCount = allOrders.length;
         isFirstLoad = false;
@@ -1828,15 +1926,15 @@ async function loadDashboardData() {
         renderCategoriesManager();
         populateSettingsForm();
         populateCategoryDropdown(); // Para el modal de productos
-        populateCommercialSettings(); // Costos de envÃ­os y cupones
+        populateCommercialSettings(); // Costos de envíos y cupones
         
     } catch (error) {
-        console.error("âŒ [Admin] Error al cargar datos:", error);
+        console.error("❌ [Admin] Error al cargar datos:", error);
         showToast("Error al cargar datos de la base de datos.");
     }
 }
 
-// Calcular y renderizar estadÃ­sticas rÃ¡pidas del dashboard
+// Calcular y renderizar estadísticas rápidas del dashboard
 function renderDashboardStats() {
     // 1. Total ventas confirmadas (Confirmado, Enviado o Entregado/Completado)
     const totalSales = allOrders
@@ -1867,12 +1965,12 @@ function registerEventListeners() {
             
             try {
                 submitBtn.disabled = true;
-                submitBtn.textContent = "Iniciando sesiÃ³n...";
+                submitBtn.textContent = "Iniciando sesión...";
                 await FirebaseService.login(email, pass);
-                showToast("Â¡SesiÃ³n iniciada con Ã©xito! ðŸ”‘");
+                showToast("¡Sesión iniciada con éxito! 🔑");
             } catch (error) {
                 console.error(error);
-                showToast(error.message || "Error al iniciar sesiÃ³n.");
+                showToast(error.message || "Error al iniciar sesión.");
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = "Ingresar al Panel";
@@ -1884,11 +1982,11 @@ function registerEventListeners() {
     if (DOM.btnLogout) {
         DOM.btnLogout.addEventListener("click", async () => {
             await FirebaseService.logout();
-            showToast("SesiÃ³n cerrada.");
+            showToast("Sesión cerrada.");
         });
     }
 
-    // PestaÃ±as (Tabs)
+    // Pestañas (Tabs)
     DOM.tabBtns.forEach(btn => {
         btn.addEventListener("click", () => {
             const target = btn.dataset.tab;
@@ -1937,7 +2035,7 @@ function registerEventListeners() {
         });
     }
 
-    // BotÃ³n Agregar Talle Personalizado en el modal
+    // Botón Agregar Talle Personalizado en el modal
     if (DOM.btnAddCustomTalle) {
         DOM.btnAddCustomTalle.addEventListener("click", () => {
             if (!DOM.customTalleInput) return;
@@ -1955,11 +2053,11 @@ function registerEventListeners() {
             
             // Auto-seleccionar el talle agregado
             selectedAdminSizes.push(newTalle);
-            renderAdminTallesChips(); // Re-renderizar para aplicar el estado de selecciÃ³n
+            renderAdminTallesChips(); // Re-renderizar para aplicar el estado de selección
         });
     }
 
-    // Agregar CategorÃ­a
+    // Agregar Categoría
     if (DOM.formAddCategory) {
         DOM.formAddCategory.addEventListener("submit", async (e) => {
             e.preventDefault();
@@ -1969,7 +2067,7 @@ function registerEventListeners() {
             if (!settings.categories) settings.categories = [];
             
             if (settings.categories.includes(newCat)) {
-                showToast("La categorÃ­a ya existe.");
+                showToast("La categoría ya existe.");
                 return;
             }
 
@@ -1979,10 +2077,10 @@ function registerEventListeners() {
                 DOM.newCategoryInput.value = "";
                 renderCategoriesManager();
                 populateCategoryDropdown();
-                showToast("CategorÃ­a agregada con Ã©xito.");
+                showToast("Categoría agregada con éxito.");
             } catch (err) {
                 console.error(err);
-                showToast("Error al guardar categorÃ­a.");
+                showToast("Error al guardar categoría.");
             }
         });
     }
@@ -2000,7 +2098,7 @@ function registerEventListeners() {
             
             try {
                 await FirebaseService.saveConfig(settings);
-                showToast("âš™ï¸ ConfiguraciÃ³n guardada con Ã©xito.");
+                showToast("⚙️ Configuración guardada con éxito.");
             } catch (err) {
                 console.error(err);
                 showToast("Error al guardar configuraciones.");
@@ -2008,7 +2106,7 @@ function registerEventListeners() {
         });
     }
 
-    // Guardar Cambio de ContraseÃ±a
+    // Guardar Cambio de Contraseña
     if (DOM.passwordChangeForm) {
         DOM.passwordChangeForm.addEventListener("submit", async (e) => {
             e.preventDefault();
@@ -2018,7 +2116,7 @@ function registerEventListeners() {
             const submitBtn = DOM.passwordChangeForm.querySelector("button[type='submit']");
             
             if (newPwd !== confirmPwd) {
-                showToast("âŒ Las contraseÃ±as no coinciden.");
+                showToast("❌ Las contraseñas no coinciden.");
                 return;
             }
             
@@ -2026,7 +2124,7 @@ function registerEventListeners() {
                 submitBtn.disabled = true;
                 submitBtn.textContent = "Actualizando...";
                 await FirebaseService.changePassword(newPwd);
-                showToast("ðŸ”‘ ContraseÃ±a actualizada. Cerrando sesiÃ³n...");
+                showToast("🔑 Contraseña actualizada. Cerrando sesión...");
                 
                 // Forzar logout seguro
                 setTimeout(async () => {
@@ -2034,10 +2132,10 @@ function registerEventListeners() {
                 }, 1500);
             } catch (err) {
                 console.error(err);
-                showToast(err.message || "Error al actualizar contraseÃ±a.");
+                showToast(err.message || "Error al actualizar contraseña.");
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = "Actualizar ContraseÃ±a";
+                submitBtn.textContent = "Actualizar Contraseña";
                 DOM.passwordChangeForm.reset();
             }
         });
@@ -2046,12 +2144,12 @@ function registerEventListeners() {
     // Resetear base de datos (Semilla forzada)
     if (DOM.btnResetDb) {
         DOM.btnResetDb.addEventListener("click", async () => {
-            if (confirm("âš ï¸ Â¿EstÃ¡s seguro de restablecer toda la base de datos? Esto borrarÃ¡ tus cambios actuales y cargarÃ¡ los productos de semilla originales.")) {
+            if (confirm("⚠️ ¿Estás seguro de restablecer toda la base de datos? Esto borrará tus cambios actuales y cargará los productos de semilla originales.")) {
                 try {
                     DOM.btnResetDb.disabled = true;
                     DOM.btnResetDb.textContent = "Restableciendo...";
                     await FirebaseService.forceResetAndSeedDatabase(window.initialProducts, window.initialConfig);
-                    showToast("âœ¨ Base de datos restablecida correctamente.");
+                    showToast("✨ Base de datos restablecida correctamente.");
                     await loadDashboardData();
                 } catch (err) {
                     console.error(err);
@@ -2071,7 +2169,7 @@ function registerEventListeners() {
         });
     }
 
-    // Guardar Tarifas de EnvÃ­o
+    // Guardar Tarifas de Envío
     if (DOM.shippingRatesForm) {
         DOM.shippingRatesForm.addEventListener("submit", async (e) => {
             e.preventDefault();
@@ -2086,15 +2184,15 @@ function registerEventListeners() {
 
             try {
                 await FirebaseService.saveConfig(settings);
-                showToast("ðŸ“¦ Costos de envÃ­o actualizados con Ã©xito.");
+                showToast("📦 Costos de envío actualizados con éxito.");
             } catch (err) {
                 console.error(err);
-                showToast("Error al guardar tarifas de envÃ­o.");
+                showToast("Error al guardar tarifas de envío.");
             }
         });
     }
 
-    // Agregar CupÃ³n de Descuento
+    // Agregar Cupón de Descuento
     if (DOM.addCouponForm) {
         DOM.addCouponForm.addEventListener("submit", async (e) => {
             e.preventDefault();
@@ -2105,7 +2203,7 @@ function registerEventListeners() {
 
             if (!settings.coupons) settings.coupons = {};
             if (settings.coupons[code] !== undefined) {
-                showToast("El cupÃ³n ya existe.");
+                showToast("El cupón ya existe.");
                 return;
             }
 
@@ -2116,10 +2214,10 @@ function registerEventListeners() {
                 DOM.newCouponCodeInput.value = "";
                 DOM.newCouponPctInput.value = "";
                 renderCouponsList();
-                showToast(`ðŸŽŸï¸ CupÃ³n ${code} creado correctamente.`);
+                showToast(`🎟️ Cupón ${code} creado correctamente.`);
             } catch (err) {
                 console.error(err);
-                showToast("Error al crear cupÃ³n.");
+                showToast("Error al crear cupón.");
             }
         });
     }
@@ -2135,7 +2233,7 @@ function renderProductsTable() {
         DOM.productsTableBody.innerHTML = `
             <tr>
                 <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 30px;">
-                    No hay productos cargados en el catÃ¡logo. Â¡Haz click en "Nuevo Producto" para empezar!
+                    No hay productos cargados en el catálogo. ¡Haz click en "Nuevo Producto" para empezar!
                 </td>
             </tr>
         `;
@@ -2145,10 +2243,10 @@ function renderProductsTable() {
     allProducts.forEach(product => {
         const tr = document.createElement("tr");
         
-        const tallesStr = (product.sizes && Array.isArray(product.sizes) && product.sizes.length > 0) ? product.sizes.join(", ") : "Ãšnico";
+        const tallesStr = (product.sizes && Array.isArray(product.sizes) && product.sizes.length > 0) ? product.sizes.join(", ") : "Único";
         const stockBadge = product.inStock 
-            ? `<span style="color: #10b981; font-weight: 600;">âœ“ Con Stock</span>` 
-            : `<span style="color: #ef4444; font-weight: 600;">âœ— Sin Stock</span>`;
+            ? `<span style="color: #10b981; font-weight: 600;">✓ Con Stock</span>` 
+            : `<span style="color: #ef4444; font-weight: 600;">✗ Sin Stock</span>`;
             
         tr.innerHTML = `
             <td>
@@ -2174,7 +2272,7 @@ function renderProductsTable() {
         // Click listeners
         tr.querySelector(".btn-edit").addEventListener("click", () => openProductModal(product.id));
         tr.querySelector(".btn-delete").addEventListener("click", async () => {
-            if (confirm("âš ï¸ Â¿EstÃ¡s seguro de eliminar este producto? Esta acciÃ³n no se puede deshacer.")) {
+            if (confirm("⚠️ ¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer.")) {
                 try {
                     await FirebaseService.deleteProduct(product.id);
                     showToast("Producto eliminado.");
@@ -2198,7 +2296,7 @@ function renderOrdersTable() {
     
     DOM.ordersTableBody.innerHTML = "";
     
-    // Filtrar pedidos segÃºn bÃºsqueda y estado
+    // Filtrar pedidos según búsqueda y estado
     const filteredOrders = allOrders.filter(order => {
         const nameMatch = order.clientName ? order.clientName.toLowerCase().includes(searchOrdersQuery) : false;
         const itemMatch = order.items ? order.items.some(item => item.name.toLowerCase().includes(searchOrdersQuery)) : false;
@@ -2212,7 +2310,7 @@ function renderOrdersTable() {
         DOM.ordersTableBody.innerHTML = `
             <tr>
                 <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 30px;">
-                    ${allOrders.length === 0 ? "No hay pedidos registrados todavÃ­a." : "No se encontraron pedidos que coincidan con la bÃºsqueda."}
+                    ${allOrders.length === 0 ? "No hay pedidos registrados todavía." : "No se encontraron pedidos que coincidan con la búsqueda."}
                 </td>
             </tr>
         `;
@@ -2239,12 +2337,12 @@ function renderOrdersTable() {
              </div>`
         ).join("");
  
-        // DirecciÃ³n / MÃ©todo de entrega
-        let metodoStr = "ðŸ¢ Taller";
+        // Dirección / Método de entrega
+        let metodoStr = "🏢 Taller";
         if (order.shippingMethod === "moto") {
-            metodoStr = `ðŸ›µ Moto<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${order.address || ''}</span>`;
+            metodoStr = `🛵 Moto<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${order.address || ''}</span>`;
         } else if (order.shippingMethod === "correo") {
-            metodoStr = `ðŸ“¦ Correo<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${order.address || ''}</span>`;
+            metodoStr = `📦 Correo<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${order.address || ''}</span>`;
         }
  
         // Notas de cliente
@@ -2317,7 +2415,7 @@ function renderOrdersTable() {
 
         // Listener para eliminar pedido
         tr.querySelector(".btn-delete-order").addEventListener("click", async () => {
-            if (confirm("âš ï¸ Â¿EstÃ¡s seguro de eliminar este pedido? Esta acciÃ³n no se puede deshacer.")) {
+            if (confirm("⚠️ ¿Estás seguro de eliminar este pedido? Esta acción no se puede deshacer.")) {
                 try {
                     await FirebaseService.deleteOrder(order.id);
                     showToast("Pedido eliminado.");
@@ -2370,7 +2468,7 @@ function openProductModal(productId = null) {
     customSizes = [];
     
     if (productId) {
-        // Modo EdiciÃ³n
+        // Modo Edición
         currentEditingProductId = productId;
         DOM.modalTitle.textContent = "Editar Prenda";
         
@@ -2384,7 +2482,7 @@ function openProductModal(productId = null) {
             // Cargar talles del producto
             if (product.sizes && Array.isArray(product.sizes)) {
                 selectedAdminSizes = [...product.sizes];
-                // Cargar talles que no estÃ©n predefinidos como personalizados
+                // Cargar talles que no estén predefinidos como personalizados
                 product.sizes.forEach(s => {
                     if (!predefinedSizes.includes(s) && !customSizes.includes(s)) {
                         customSizes.push(s);
@@ -2402,7 +2500,7 @@ function openProductModal(productId = null) {
                 currentUploadedImageUrl = "";
             }
 
-            // Cargar imÃ¡genes adicionales
+            // Cargar imágenes adicionales
             if (product.images && Array.isArray(product.images) && product.images.length > 1) {
                 const isFirstPrincipal = product.images[0] === product.image;
                 currentAdditionalImages = isFirstPrincipal ? product.images.slice(1) : product.images.filter(img => img !== product.image);
@@ -2465,7 +2563,7 @@ async function saveProductForm() {
     const existingProduct = currentEditingProductId ? allProducts.find(p => p.id === currentEditingProductId) : null;
     const finalImageUrl = currentUploadedImageUrl || (existingProduct ? existingProduct.image : "https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600");
 
-    // Construir el array completo de imÃ¡genes (Principal + Adicionales)
+    // Construir el array completo de imágenes (Principal + Adicionales)
     let images = [finalImageUrl, ...currentAdditionalImages];
     const videoUrl = currentUploadedVideoUrl || "";
 
@@ -2493,16 +2591,22 @@ async function saveProductForm() {
 
         await FirebaseService.saveProduct(productData);
         
-        showToast("ðŸ‘— Prenda guardada con Ã©xito.");
+        showToast("👗 Prenda guardada con éxito.");
         toggleProductModal(false);
         await loadDashboardData();
     } catch (err) {
         console.error(err);
         showToast("Error al guardar el producto.");
+    } finally {
+        const saveBtn = DOM.productForm.querySelector("button[type='submit']");
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = "Guardar Prenda";
+        }
     }
 }
 
-// CONFIGURACIÃ“N DE DRAG & DROP E IMÃGENES A FIREBASE STORAGE
+// CONFIGURACIÓN DE DRAG & DROP E IMÁGENES A FIREBASE STORAGE
 function setupDragAndDrop() {
     // 1. Cargador de Foto Principal
     if (DOM.dropZone && DOM.fileInput) {
@@ -2588,11 +2692,11 @@ async function handleUploadedFile(file, target) {
     
     // Validar tipo (imagen / video)
     if (target === 'video' && !file.type.startsWith("video/")) {
-        showToast("Por favor, selecciona un archivo de video vÃ¡lido.");
+        showToast("Por favor, selecciona un archivo de video válido.");
         return;
     }
     if (target !== 'video' && !file.type.startsWith("image/")) {
-        showToast("Por favor, selecciona una imagen vÃ¡lida.");
+        showToast("Por favor, selecciona una imagen válida.");
         return;
     }
 
@@ -2631,18 +2735,18 @@ async function handleUploadedFile(file, target) {
         if (target === 'main') {
             DOM.imagePreview.innerHTML = `<img src="${url}" alt="Preview">`;
             currentUploadedImageUrl = url;
-            showToast("Â¡Foto principal subida con Ã©xito! ðŸ“·");
+            showToast("¡Foto principal subida con éxito! 📷");
         } else if (target === 'additional') {
             const loadingThumb = document.getElementById("additional-loading-thumb");
             if (loadingThumb) loadingThumb.remove();
             
             currentAdditionalImages.push(url);
             renderAdditionalPreviews();
-            showToast("Â¡Foto carrusel agregada con Ã©xito! ðŸ–¼ï¸");
+            showToast("¡Foto carrusel agregada con éxito! 🖼️");
         } else if (target === 'video') {
             currentUploadedVideoUrl = url;
             renderVideoPreview();
-            showToast("Â¡Video de la prenda subido con Ã©xito! ðŸŽ¥");
+            showToast("¡Video de la prenda subido con éxito! 🎥");
         }
     } catch (error) {
         console.error(error);
@@ -2658,7 +2762,7 @@ async function handleUploadedFile(file, target) {
             renderVideoPreview();
         }
         
-        showToast(`Error al subir archivo: ${error.message || "Error crÃ­tico."}`);
+        showToast(`Error al subir archivo: ${error.message || "Error crítico."}`);
     }
 }
 
@@ -2678,7 +2782,7 @@ function renderAdditionalPreviews() {
         thumb.className = "preview-thumbnail";
         thumb.innerHTML = `
             <img src="${imgUrl}" alt="Miniatura ${idx + 1}">
-            <button type="button" class="preview-thumbnail-remove" onclick="removeAdditionalImage(${idx})" title="Eliminar foto">Ã—</button>
+            <button type="button" class="preview-thumbnail-remove" onclick="removeAdditionalImage(${idx})" title="Eliminar foto">×</button>
         `;
         DOM.additionalPreviewsContainer.appendChild(thumb);
     });
@@ -2719,7 +2823,7 @@ window.removeUploadedVideo = function() {
     renderVideoPreview();
 };
 
-// RENDERIZAR GESTOR DE CATEGORÃAS
+// RENDERIZAR GESTOR DE CATEGORÍAS
 function renderCategoriesManager() {
     if (!DOM.adminCategoriesList) return;
     
@@ -2728,7 +2832,7 @@ function renderCategoriesManager() {
     const categories = settings.categories || [];
     
     if (categories.length === 0) {
-        DOM.adminCategoriesList.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">No hay categorÃ­as creadas. Agrega una arriba.</p>`;
+        DOM.adminCategoriesList.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">No hay categorías creadas. Agrega una arriba.</p>`;
         return;
     }
 
@@ -2737,22 +2841,22 @@ function renderCategoriesManager() {
         chip.className = "admin-category-tag";
         chip.innerHTML = `
             <span>${cat}</span>
-            <button title="Borrar categorÃ­a" class="btn-delete-cat" data-name="${cat}">
+            <button title="Borrar categoría" class="btn-delete-cat" data-name="${cat}">
                 <i data-lucide="x" style="width: 14px; height: 14px;"></i>
             </button>
         `;
         
         chip.querySelector(".btn-delete-cat").addEventListener("click", async () => {
-            if (confirm(`Â¿Borrar la categorÃ­a "${cat}"? Los productos que la usan no se borrarÃ¡n, pero ya no aparecerÃ¡ como filtro.`)) {
+            if (confirm(`¿Borrar la categoría "${cat}"? Los productos que la usan no se borrarán, pero ya no aparecerá como filtro.`)) {
                 settings.categories = settings.categories.filter(c => c !== cat);
                 try {
                     await FirebaseService.saveConfig(settings);
                     renderCategoriesManager();
                     populateCategoryDropdown();
-                    showToast("CategorÃ­a eliminada.");
+                    showToast("Categoría eliminada.");
                 } catch (err) {
                     console.error(err);
-                    showToast("Error al borrar categorÃ­a.");
+                    showToast("Error al borrar categoría.");
                 }
             }
         });
@@ -2762,7 +2866,7 @@ function renderCategoriesManager() {
     lucide.createIcons();
 }
 
-// Rellenar formulario de configuraciÃ³n general
+// Rellenar formulario de configuración general
 function populateSettingsForm() {
     if (!DOM.settingsForm) return;
     
@@ -2795,7 +2899,7 @@ function populateCategoryDropdown() {
     });
 }
 
-// InyecciÃ³n de animaciÃ³n CSS rÃ¡pida para el loader en el preview
+// Inyección de animación CSS rápida para el loader en el preview
 const style = document.createElement('style');
 style.innerHTML = `
     @keyframes spin {
@@ -2836,9 +2940,9 @@ function showToast(message) {
 // NUEVAS FUNCIONALIDADES COMERCIALES Y DE ALERTAS (ADMINISTRADOR)
 // ==========================================================================
 
-// 1. POBLAR CONFIGURACIÃ“N COMERCIAL (EnvÃ­os y Cupones)
+// 1. POBLAR CONFIGURACIÓN COMERCIAL (Envíos y Cupones)
 function populateCommercialSettings() {
-    // Rellenar costos de envÃ­o
+    // Rellenar costos de envío
     const rates = settings.shippingRates || { retiro: 0, moto: 1500, correo: 3500 };
     if (DOM.shipRetiroInput) DOM.shipRetiroInput.value = rates.retiro !== undefined ? rates.retiro : 0;
     if (DOM.shipMotoInput) DOM.shipMotoInput.value = rates.moto !== undefined ? rates.moto : 1500;
@@ -2860,7 +2964,7 @@ function renderCouponsList() {
         DOM.couponsListBody.innerHTML = `
             <tr>
                 <td colspan="3" style="text-align: center; color: var(--text-muted); padding: 15px;">
-                    No hay cupones creados todavÃ­a.
+                    No hay cupones creados todavía.
                 </td>
             </tr>
         `;
@@ -2874,14 +2978,14 @@ function renderCouponsList() {
             <td style="padding: 10px; font-weight: 700; color: var(--white);">${code}</td>
             <td style="padding: 10px; color: var(--accent); font-weight: 600;">${coupons[code]}% OFF</td>
             <td style="padding: 10px; text-align: right;">
-                <button class="btn-icon btn-icon-danger btn-delete-coupon" title="Eliminar cupÃ³n" data-code="${code}">
+                <button class="btn-icon btn-icon-danger btn-delete-coupon" title="Eliminar cupón" data-code="${code}">
                     <i data-lucide="x" style="width: 14px; height: 14px;"></i>
                 </button>
             </td>
         `;
 
         tr.querySelector(".btn-delete-coupon").addEventListener("click", async () => {
-            if (confirm(`Â¿EstÃ¡s seguro de eliminar el cupÃ³n "${code}"?`)) {
+            if (confirm(`¿Estás seguro de eliminar el cupón "${code}"?`)) {
                 await deleteCoupon(code);
             }
         });
@@ -2892,17 +2996,17 @@ function renderCouponsList() {
     if (window.lucide) window.lucide.createIcons();
 }
 
-// Eliminar un cupÃ³n
+// Eliminar un cupón
 async function deleteCoupon(code) {
     if (settings.coupons && settings.coupons[code] !== undefined) {
         delete settings.coupons[code];
         try {
             await FirebaseService.saveConfig(settings);
             renderCouponsList();
-            showToast(`CupÃ³n ${code} eliminado con Ã©xito.`);
+            showToast(`Cupón ${code} eliminado con éxito.`);
         } catch (err) {
             console.error(err);
-            showToast("Error al eliminar cupÃ³n.");
+            showToast("Error al eliminar cupón.");
         }
     }
 }
@@ -2914,7 +3018,7 @@ function exportOrdersToCSV() {
         return;
     }
     
-    // Filtrar pedidos segÃºn bÃºsqueda y estado actuales
+    // Filtrar pedidos según búsqueda y estado actuales
     const filteredOrders = allOrders.filter(order => {
         const nameMatch = order.clientName ? order.clientName.toLowerCase().includes(searchOrdersQuery) : false;
         const itemMatch = order.items ? order.items.some(item => item.name.toLowerCase().includes(searchOrdersQuery)) : false;
@@ -2989,8 +3093,8 @@ function printOrderInvoice(orderId) {
         ? `<p style="margin: 5px 0; color: #ef4444;"><strong>Descuento (${order.coupon || ''}):</strong> -$${order.discount.toLocaleString('es-AR')}</p>`
         : "";
     const shippingHtml = order.shippingCost && order.shippingCost > 0
-        ? `<p style="margin: 5px 0;"><strong>EnvÃ­o:</strong> $${order.shippingCost.toLocaleString('es-AR')}</p>`
-        : `<p style="margin: 5px 0; color: #10b981;"><strong>EnvÃ­o:</strong> Gratis</p>`;
+        ? `<p style="margin: 5px 0;"><strong>Envío:</strong> $${order.shippingCost.toLocaleString('es-AR')}</p>`
+        : `<p style="margin: 5px 0; color: #10b981;"><strong>Envío:</strong> Gratis</p>`;
         
     const dateObj = new Date(order.createdAt);
     const cleanDate = isNaN(dateObj.getTime()) ? "Fecha desconocida" : dateObj.toLocaleString('es-AR');
@@ -3101,7 +3205,7 @@ function printOrderInvoice(orderId) {
             <div class="header">
                 <div>
                     <div class="logo">Curvys.Store by Moni</div>
-                    <div style="font-size: 0.85rem; color: #4b5563; margin-top: 3px;">Indumentaria de EdiciÃ³n Limitada</div>
+                    <div style="font-size: 0.85rem; color: #4b5563; margin-top: 3px;">Indumentaria de Edición Limitada</div>
                 </div>
                 <div style="text-align: right;">
                     <div style="font-weight: 700; font-size: 1.25rem; color: #111; letter-spacing: -0.01em;">ORDEN DE EMPAQUE</div>
@@ -3114,8 +3218,8 @@ function printOrderInvoice(orderId) {
                 <div class="card">
                     <h3>Datos de Entrega</h3>
                     <p style="margin: 6px 0;"><strong>Cliente:</strong> ${order.clientName}</p>
-                    <p style="margin: 6px 0;"><strong>MÃ©todo:</strong> ${order.shippingMethod.toUpperCase()}</p>
-                    ${order.address ? `<p style="margin: 6px 0;"><strong>DirecciÃ³n:</strong> ${order.address}</p>` : ""}
+                    <p style="margin: 6px 0;"><strong>Método:</strong> ${order.shippingMethod.toUpperCase()}</p>
+                    ${order.address ? `<p style="margin: 6px 0;"><strong>Dirección:</strong> ${order.address}</p>` : ""}
                 </div>
                 <div class="card">
                     <h3>Detalles y Notas</h3>
@@ -3151,7 +3255,7 @@ function printOrderInvoice(orderId) {
             </div>
             
             <script>
-                // Auto trigger de impresiÃ³n al cargar la ventana
+                // Auto trigger de impresión al cargar la ventana
                 window.onload = function() {
                     setTimeout(function() {
                         window.print();
@@ -3171,7 +3275,7 @@ function playNewOrderSound() {
         if (!AudioContext) return;
         const ctx = new AudioContext();
         
-        // MelodÃ­a corta: Nota 1 (C5 - 523.25Hz)
+        // Melodía corta: Nota 1 (C5 - 523.25Hz)
         const osc1 = ctx.createOscillator();
         const gain1 = ctx.createGain();
         osc1.type = "sine";
@@ -3201,9 +3305,8 @@ function playNewOrderSound() {
     }
 }
 
-// Iniciar aplicaciÃ³n al cargar el DOM
+// Iniciar aplicación al cargar el DOM
 document.addEventListener("DOMContentLoaded", initAdmin);
-
 
 
 ================================================================================
@@ -3214,45 +3317,41 @@ FILE: index.html
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Curvys.Store by Moni - Indumentaria de EdiciÃ³n Limitada</title>
+    <title>Curvys.Store by Moni - Indumentaria de Edición Limitada</title>
     
     <!-- Meta tags SEO -->
-    <meta name="description" content="Indumentaria femenina de diseÃ±o y ediciÃ³n limitada. EnvÃ­os a todo el paÃ­s. DiseÃ±os Ãºnicos pensados para realzar tus curvas. Â¡SÃ© tu propia inspiraciÃ³n!">
+    <meta name="description" content="Indumentaria femenina de diseño y edición limitada. Envíos a todo el país. Diseños únicos pensados para realzar tus curvas. ¡Sé tu propia inspiración!">
     <meta property="og:title" content="Curvys.Store by Moni - Tienda Oficial">
-    <meta property="og:description" content="CatÃ¡logo online de ropa femenina de ediciÃ³n limitada. HacÃ© tu pedido y finalizalo por WhatsApp. EnvÃ­os a todo el paÃ­s.">
+    <meta property="og:description" content="Catálogo online de ropa femenina de edición limitada. Hacé tu pedido y finalizalo por WhatsApp. Envíos a todo el país.">
     <meta property="og:type" content="website">
     
     <!-- Hojas de estilo -->
     <link rel="stylesheet" href="style.css">
     
-    <!-- Lucide Icons para IconografÃ­a Moderna -->
+    <!-- Lucide Icons para Iconografía Moderna -->
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
 
-    <!-- Banner superior de promociones y envÃ­os -->
-    <div class="announcement-banner">
-        <p id="banner-text">âœ¨ Carga inicial del sitio... | Indumentaria de diseÃ±o de ediciÃ³n limitada âœ¨</p>
-    </div>
 
     <!-- Encabezado / Header principal -->
     <header>
         <div class="container header-container">
             <a href="#" class="logo">
-                <img src="logo.jpg" alt="Curvys Store by Moni" class="logo-img-original">
+                <img src="logo.png" alt="Curvys Store by Moni" class="logo-img-original">
             </a>
             
             <nav class="desktop-only">
-                <a href="#catalogo" class="nav-link active">CatÃ¡logo</a>
+                <a href="#catalogo" class="nav-link active">Catálogo</a>
                 <a href="#contacto" class="nav-link">Contacto</a>
             </nav>
             
             <div class="header-actions">
-                <!-- BotÃ³n de Tema Claro/Oscuro -->
+                <!-- Botón de Tema Claro/Oscuro -->
                 <button class="cart-trigger" id="theme-toggle" title="Cambiar Tema" aria-label="Cambiar Tema">
                     <i data-lucide="moon" style="width: 22px; height: 22px;"></i>
                 </button>
-                <!-- BotÃ³n al Panel Administrador -->
+                <!-- Botón al Panel Administrador -->
                 <a href="admin.html" class="cart-trigger" title="Panel Administrador" aria-label="Panel Administrador">
                     <i data-lucide="settings" style="width: 22px; height: 22px;"></i>
                 </a>
@@ -3265,7 +3364,7 @@ FILE: index.html
         </div>
     </header>
 
-    <!-- SecciÃ³n Hero de PresentaciÃ³n -->
+    <!-- Sección Hero de Presentación -->
     <section class="hero" id="hero-slider-section">
         <!-- Diapositivas de fondo animadas -->
         <div class="hero-slides-container" id="hero-slides-container">
@@ -3277,11 +3376,11 @@ FILE: index.html
         <div class="container hero-content-container">
             <span class="hero-subtitle">Boutique Exclusiva</span>
             <h1 class="hero-title" id="hero-title">Curvys.Store by Moni</h1>
-            <p class="hero-desc" id="hero-desc">Indumentaria de diseÃ±o Ãºnico. ConfecciÃ³n a medida y de ediciÃ³n limitada.</p>
+            <p class="hero-desc" id="hero-desc">Indumentaria de diseño único. Confección a medida y de edición limitada.</p>
             <div class="hero-buttons">
                 <a href="#catalogo" class="btn btn-primary">
                     <i data-lucide="shopping-cart" style="width: 18px; height: 18px;"></i>
-                    Ver CatÃ¡logo
+                    Ver Catálogo
                 </a>
                 <a href="#" id="instagram-link" target="_blank" class="btn btn-secondary">
                     <i data-lucide="instagram" style="width: 18px; height: 18px;"></i>
@@ -3291,13 +3390,13 @@ FILE: index.html
         </div>
     </section>
 
-    <!-- Barra de Filtros y BÃºsqueda de Productos -->
+    <!-- Barra de Filtros y Búsqueda de Productos -->
     <section class="search-filter-section" id="catalogo">
         <div class="container search-filter-wrapper">
-            <!-- Barra de categorÃ­as deslizable horizontalmente + Favoritos -->
+            <!-- Barra de categorías deslizable horizontalmente + Favoritos -->
             <div style="display: flex; align-items: center; gap: 15px; width: 100%; flex-wrap: wrap;">
                 <div class="categories-scroll" id="categories-scroll" style="flex-grow: 1;">
-                    <!-- Se inyecta dinÃ¡micamente con JS -->
+                    <!-- Se inyecta dinámicamente con JS -->
                 </div>
                 <button class="category-btn fav-filter-btn" id="fav-filter-btn" style="white-space: nowrap; display: flex; align-items: center; gap: 6px; color: #ef4444; border-color: rgba(239, 68, 68, 0.2);">
                     <i data-lucide="heart" style="width: 14px; height: 14px;"></i>
@@ -3315,7 +3414,7 @@ FILE: index.html
                 
                 <!-- Ordenador -->
                 <div class="sort-box">
-                    <select id="sort-select" class="sort-select" aria-label="Ordenar catÃ¡logo">
+                    <select id="sort-select" class="sort-select" aria-label="Ordenar catálogo">
                         <option value="default">Destacados</option>
                         <option value="price-asc">Precio: Menor a Mayor</option>
                         <option value="price-desc">Precio: Mayor a Menor</option>
@@ -3326,20 +3425,20 @@ FILE: index.html
         </div>
     </section>
 
-    <!-- Grilla del CatÃ¡logo Oficial -->
+    <!-- Grilla del Catálogo Oficial -->
     <main class="catalog-section">
         <div class="container">
             <!-- Separador decorativo dorado -->
             <div class="luxury-separator">
                 <div class="separator-line"></div>
-                <div class="separator-ornament">âœ¦</div>
+                <div class="separator-ornament">✦</div>
                 <div class="separator-line"></div>
             </div>
             
             <div class="section-title-wrapper">
                 <div>
-                    <h2 class="section-title">ColecciÃ³n Disponible</h2>
-                    <p class="section-subtitle">EdiciÃ³n limitada y lanzamientos Ãºnicos</p>
+                    <h2 class="section-title">Colección Disponible</h2>
+                    <p class="section-subtitle">Edición limitada y lanzamientos únicos</p>
                 </div>
                 <span class="product-count" id="product-count">0 productos</span>
             </div>
@@ -3350,7 +3449,32 @@ FILE: index.html
         </div>
     </main>
 
-    <!-- CajÃ³n deslizable del Carrito de Compras (Drawer) -->
+    <!-- Sección: ¿Cómo saber tu talle? -->
+    <section class="size-guide-section" id="como-saber-talle">
+        <div class="container">
+            <!-- Separador decorativo dorado -->
+            <div class="luxury-separator">
+                <div class="separator-line"></div>
+                <div class="separator-ornament">✦</div>
+                <div class="separator-line"></div>
+            </div>
+            
+            <div class="section-title-wrapper" style="justify-content: center; text-align: center; margin-bottom: 30px;">
+                <div>
+                    <h2 class="section-title" style="font-size: 1.8rem; text-align: center;">¿Cómo saber tu talle?</h2>
+                    <p class="section-subtitle" style="margin-top: 5px; text-align: center;">Guía práctica para tomarte las medidas y encontrar la prenda perfecta</p>
+                </div>
+            </div>
+            
+            <div class="size-guide-card">
+                <div class="size-guide-img-container">
+                    <img src="guia-talles.png" alt="Guía de talles y medidas - Curvys Store" class="size-guide-img">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Cajón deslizable del Carrito de Compras (Drawer) -->
     <div class="cart-drawer-overlay" id="cart-overlay">
         <div class="cart-drawer">
             <div class="cart-drawer-header">
@@ -3362,9 +3486,9 @@ FILE: index.html
             
             <!-- Cuerpo scrollable del Carrito -->
             <div class="cart-drawer-body">
-                <!-- Contenedor de artÃ­culos en el carrito -->
+                <!-- Contenedor de artículos en el carrito -->
                 <div class="cart-items-container" id="cart-items">
-                    <!-- InyecciÃ³n dinÃ¡mica con JS -->
+                    <!-- Inyección dinámica con JS -->
                 </div>
                 
                 <!-- Footer del Carrito con totales y formulario de contacto -->
@@ -3379,7 +3503,7 @@ FILE: index.html
                             <span id="cart-discount-val">-$0</span>
                         </div>
                         <div style="display: flex; justify-content: space-between;">
-                            <span>Costo de envÃ­o:</span>
+                            <span>Costo de envío:</span>
                             <span id="cart-shipping-val">$0</span>
                         </div>
                     </div>
@@ -3389,33 +3513,33 @@ FILE: index.html
                         <span class="cart-total-value" id="cart-total">$0</span>
                     </div>
                     
-                    <!-- Formulario de FinalizaciÃ³n -->
+                    <!-- Formulario de Finalización -->
                     <form id="checkout-form" class="checkout-form-container">
                         <span class="checkout-title">Datos del Pedido</span>
                         
                         <div class="form-group">
                             <label for="client-name">Nombre Completo *</label>
-                            <input type="text" id="client-name" class="form-control" placeholder="Ej. MarÃ­a PÃ©rez" required>
+                            <input type="text" id="client-name" class="form-control" placeholder="Ej. María Pérez" required>
                         </div>
                         
                         <div class="form-group">
-                            <label for="client-shipping">MÃ©todo de Entrega</label>
+                            <label for="client-shipping">Método de Entrega</label>
                             <select id="client-shipping" class="form-control">
                                 <option value="retiro">Retirar por Taller (Sin Costo)</option>
-                                <option value="moto">EnvÃ­o por Moto Express</option>
-                                <option value="correo">EnvÃ­o por Correo (Todo el paÃ­s)</option>
+                                <option value="moto">Envío por Moto Express</option>
+                                <option value="correo">Envío por Correo (Todo el país)</option>
                             </select>
-                            <span class="form-help" id="shipping-cost-label" style="font-size: 0.75rem; color: var(--accent); font-weight: 600; margin-top: 4px; display: block;">EnvÃ­o: Gratis</span>
+                            <span class="form-help" id="shipping-cost-label" style="font-size: 0.75rem; color: var(--accent); font-weight: 600; margin-top: 4px; display: block;">Envío: Gratis</span>
                         </div>
                         
                         <div class="form-group" id="address-group" style="display: none;">
-                            <label for="client-address">DirecciÃ³n de EnvÃ­o *</label>
-                            <input type="text" id="client-address" class="form-control" placeholder="DirecciÃ³n, Localidad, CP">
+                            <label for="client-address">Dirección de Envío *</label>
+                            <input type="text" id="client-address" class="form-control" placeholder="Dirección, Localidad, CP">
                         </div>
     
-                        <!-- Campo de CupÃ³n de Descuento -->
+                        <!-- Campo de Cupón de Descuento -->
                         <div class="form-group">
-                            <label for="coupon-input">CupÃ³n de Descuento</label>
+                            <label for="coupon-input">Cupón de Descuento</label>
                             <div style="display: flex; gap: 8px;">
                                 <input type="text" id="coupon-input" class="form-control" style="text-transform: uppercase;" placeholder="Ej. CURVYS10">
                                 <button type="button" id="btn-apply-coupon" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; border-color: var(--border-color); white-space: nowrap;">Aplicar</button>
@@ -3425,7 +3549,7 @@ FILE: index.html
                         
                         <div class="form-group">
                             <label for="client-notes">Notas / Talle personalizado</label>
-                            <textarea id="client-notes" class="form-control" rows="2" placeholder="Ej: Me gustarÃ­a el sweter en azul si es posible..."></textarea>
+                            <textarea id="client-notes" class="form-control" rows="2" placeholder="Ej: Me gustaría el sweter en azul si es posible..."></textarea>
                         </div>
                         
                         <button type="submit" class="btn btn-primary" id="whatsapp-btn" style="width: 100%; border-radius: 8px; margin-top: 10px;">
@@ -3457,7 +3581,7 @@ FILE: index.html
                         <span>Ver en Movimiento</span>
                     </button>
 
-                    <!-- Controles de NavegaciÃ³n del Carrusel -->
+                    <!-- Controles de Navegación del Carrusel -->
                     <button class="carousel-btn-nav prev" id="carousel-prev" aria-label="Imagen anterior">
                         <i data-lucide="chevron-left" style="width: 20px; height: 20px;"></i>
                     </button>
@@ -3479,24 +3603,24 @@ FILE: index.html
                 </div>
             </div>
             <div class="modal-info">
-                <span class="modal-cat" id="modal-cat">CategorÃ­a</span>
-                <h2 class="modal-title" id="modal-title">TÃ­tulo del Producto</h2>
+                <span class="modal-cat" id="modal-cat">Categoría</span>
+                <h2 class="modal-title" id="modal-title">Título del Producto</h2>
                 <div class="modal-price" id="modal-price">$0</div>
-                <p class="modal-desc" id="modal-desc">DescripciÃ³n del producto...</p>
+                <p class="modal-desc" id="modal-desc">Descripción del producto...</p>
                 
                 <div class="size-selector-wrap">
                     <div class="selector-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <h4 class="selector-label" style="margin-bottom: 0;">Talles Disponibles</h4>
                         <button type="button" id="btn-size-guide" class="size-guide-link" style="background: none; border: none; color: var(--accent); font-size: 0.8rem; text-decoration: underline; cursor: pointer; font-weight: 500;">
-                            GuÃ­a de Talles
+                            Guía de Talles
                         </button>
                     </div>
                     <div class="size-chips" id="modal-sizes">
-                        <!-- Chips de talle inyectados dinÃ¡micamente -->
+                        <!-- Chips de talle inyectados dinámicamente -->
                     </div>
                 </div>
 
-                <!-- SecciÃ³n GuÃ­a de Talles (Oculta por defecto) -->
+                <!-- Sección Guía de Talles (Oculta por defecto) -->
                 <div class="size-guide-container" id="size-guide-container" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border-color);">
                     <h4 style="font-size: 0.9rem; margin-bottom: 8px; color: var(--accent);">Tabla de Medidas Sugeridas</h4>
                     <div class="table-responsive" style="max-height: 180px; overflow-y: auto;">
@@ -3510,7 +3634,7 @@ FILE: index.html
                                 </tr>
                             </thead>
                             <tbody id="size-guide-rows">
-                                <!-- Filas inyectadas dinÃ¡micamente -->
+                                <!-- Filas inyectadas dinámicamente -->
                             </tbody>
                         </table>
                     </div>
@@ -3528,21 +3652,21 @@ FILE: index.html
         </div>
     </div>
 
-    <!-- Pie de pÃ¡gina / Footer -->
+    <!-- Pie de página / Footer -->
     <footer id="contacto">
         <div class="container footer-grid">
             <div class="footer-brand">
                 <a href="#" class="logo" style="margin-bottom: 15px; display: inline-block;">
-                    <img src="logo.jpg" alt="Curvys Store by Moni" class="logo-img-original">
+                    <img src="logo.png" alt="Curvys Store by Moni" class="logo-img-original">
                 </a>
-                <p class="footer-desc" id="footer-about">Indumentaria de diseÃ±o Ãºnico de ediciÃ³n limitada. SÃ© tu propia inspiraciÃ³n.</p>
+                <p class="footer-desc" id="footer-about">Indumentaria de diseño único de edición limitada. Sé tu propia inspiración.</p>
             </div>
             
             <div>
-                <h4 class="footer-title">MenÃº</h4>
+                <h4 class="footer-title">Menú</h4>
                 <ul class="footer-links">
                     <li><a href="#">Inicio</a></li>
-                    <li><a href="#catalogo">CatÃ¡logo</a></li>
+                    <li><a href="#catalogo">Catálogo</a></li>
                     <li><a href="admin.html">Administrador</a></li>
                     <li><a href="#contacto">Contacto</a></li>
                 </ul>
@@ -3568,24 +3692,23 @@ FILE: index.html
         </div>
     </footer>
 
-    <!-- Firebase SDK (VersiÃ³n 8 - compatible con tu estructura de Universe Celu y MarroquinerÃ­a) -->
+    <!-- Firebase SDK (Versión 8 - compatible con tu estructura de Universe Celu y Marroquinería) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
-    <!-- Controladores y ConfiguraciÃ³n -->
+    <!-- Controladores y Configuración -->
     <script src="firebase-config.js"></script>
     <script src="firebase-service.js"></script>
     <script src="seed-data.js"></script>
     <script src="app.js"></script>
 
-    <!-- Inicializar Ã­conos Lucide -->
+    <!-- Inicializar íconos Lucide -->
     <script>
         lucide.createIcons();
     </script>
 </body>
 </html>
-
 
 
 ================================================================================
@@ -3606,23 +3729,23 @@ FILE: admin.html
 </head>
 <body style="background-color: #050507;">
 
-    <!-- 1. SecciÃ³n de Login (Se muestra si no estÃ¡ autenticado) -->
+    <!-- 1. Sección de Login (Se muestra si no está autenticado) -->
     <div class="container login-container" id="login-section">
         <div class="login-card">
             <div class="login-logo">
-                <img src="logo.jpg" alt="Curvys Store by Moni" class="logo-img-original" style="margin-bottom: 15px; width: 80px; height: 80px; box-shadow: 0 0 25px var(--accent-glow);">
+                <img src="logo.png" alt="Curvys Store by Moni" class="logo-img-original" style="margin-bottom: 15px; width: 80px; height: 80px; box-shadow: 0 0 25px var(--accent-glow);">
                 <h1 class="login-title">CURVYS Store</h1>
-                <p class="login-subtitle">GestiÃ³n de CatÃ¡logo Comercial</p>
+                <p class="login-subtitle">Gestión de Catálogo Comercial</p>
             </div>
             
             <form id="login-form">
                 <div class="form-group">
-                    <label for="login-email">Correo ElectrÃ³nico</label>
+                    <label for="login-email">Correo Electrónico</label>
                     <input type="email" id="login-email" class="form-control" placeholder="nombre@correo.com" required>
                 </div>
                 <div class="form-group">
-                    <label for="login-password">ContraseÃ±a</label>
-                    <input type="password" id="login-password" class="form-control" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" required>
+                    <label for="login-password">Contraseña</label>
+                    <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%; border-radius: 8px; margin-top: 10px;">
                     Ingresar al Panel
@@ -3631,14 +3754,14 @@ FILE: admin.html
         </div>
     </div>
 
-    <!-- 2. Dashboard de AdministraciÃ³n (Se muestra tras iniciar sesiÃ³n) -->
+    <!-- 2. Dashboard de Administración (Se muestra tras iniciar sesión) -->
     <div id="admin-dashboard" style="display: none;">
         
-        <!-- Header de AdministraciÃ³n -->
+        <!-- Header de Administración -->
         <header class="admin-header">
             <div class="container admin-header-container">
                 <div class="logo">
-                    <img src="logo.jpg" alt="Curvys Store by Moni" class="logo-img-original">
+                    <img src="logo.png" alt="Curvys Store by Moni" class="logo-img-original">
                 </div>
                 
                 <div class="header-actions">
@@ -3655,7 +3778,7 @@ FILE: admin.html
         </header>
 
         <div class="container">
-            <!-- Grid de EstadÃ­sticas RÃ¡pidas -->
+            <!-- Grid de Estadísticas Rápidas -->
             <div class="admin-stats-grid">
                 <div class="stat-card">
                     <div class="stat-icon" style="background: rgba(212, 175, 55, 0.1); color: var(--accent);">
@@ -3688,7 +3811,7 @@ FILE: admin.html
                 </div>
             </div>
 
-            <!-- PestaÃ±as de NavegaciÃ³n -->
+            <!-- Pestañas de Navegación -->
             <div class="admin-tabs">
                 <button class="admin-tab-btn active" data-tab="products">
                     <i data-lucide="shirt" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
@@ -3700,21 +3823,21 @@ FILE: admin.html
                 </button>
                 <button class="admin-tab-btn" data-tab="categories">
                     <i data-lucide="tags" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
-                    CategorÃ­as
+                    Categorías
                 </button>
                 <button class="admin-tab-btn" data-tab="settings">
                     <i data-lucide="settings" style="width: 16px; height: 16px; display: inline; vertical-align: middle; margin-right: 6px;"></i>
-                    ConfiguraciÃ³n
+                    Configuración
                 </button>
             </div>
 
-            <!-- CONTENIDOS DE LAS PESTAÃ‘AS -->
+            <!-- CONTENIDOS DE LAS PESTAÑAS -->
 
             <!-- Panel 1: Productos -->
             <div class="admin-panel active" id="panel-products">
                 <div class="admin-card">
                     <div class="admin-card-title">
-                        <h2>CatÃ¡logo de Prendas</h2>
+                        <h2>Catálogo de Prendas</h2>
                         <button class="btn btn-primary" id="btn-new-product" style="padding: 8px 16px; border-radius: 8px; font-size: 0.85rem;">
                             <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
                             Nueva Prenda
@@ -3727,7 +3850,7 @@ FILE: admin.html
                                 <tr>
                                     <th>Imagen</th>
                                     <th>Nombre</th>
-                                    <th>CategorÃ­a</th>
+                                    <th>Categoría</th>
                                     <th>Precio</th>
                                     <th>Talles</th>
                                     <th>Stock</th>
@@ -3749,7 +3872,7 @@ FILE: admin.html
                         <h2>Historial de Pedidos</h2>
                     </div>
                     
-                    <!-- Barra de Filtros y BÃºsqueda para Pedidos -->
+                    <!-- Barra de Filtros y Búsqueda para Pedidos -->
                     <div class="admin-filters-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
                         <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; flex-grow: 1;">
                             <div class="search-box" style="margin-bottom: 0; max-width: 320px; width: 100%;">
@@ -3782,7 +3905,7 @@ FILE: admin.html
                                 <tr>
                                     <th>Fecha</th>
                                     <th>Cliente</th>
-                                    <th>MÃ©todo Entrega</th>
+                                    <th>Método Entrega</th>
                                     <th>Total</th>
                                     <th>Estado</th>
                                     <th>Acciones</th>
@@ -3796,11 +3919,11 @@ FILE: admin.html
                 </div>
             </div>
 
-            <!-- Panel 3: CategorÃ­as -->
+            <!-- Panel 3: Categorías -->
             <div class="admin-panel" id="panel-categories">
                 <div class="admin-card">
                     <div class="admin-card-title">
-                        <h2>Gestor de CategorÃ­as</h2>
+                        <h2>Gestor de Categorías</h2>
                     </div>
                     
                     <form id="form-add-category" style="display: flex; gap: 10px; max-width: 500px; margin-bottom: 25px;">
@@ -3810,18 +3933,18 @@ FILE: admin.html
                         </button>
                     </form>
 
-                    <h4 class="selector-label" style="margin-bottom: 12px;">CategorÃ­as Creadas</h4>
+                    <h4 class="selector-label" style="margin-bottom: 12px;">Categorías Creadas</h4>
                     <div class="admin-category-list" id="admin-categories-list">
-                        <!-- Chips de categorÃ­as cargados con JS -->
+                        <!-- Chips de categorías cargados con JS -->
                     </div>
                 </div>
             </div>
 
-            <!-- Panel 4: ConfiguraciÃ³n y Ajustes -->
+            <!-- Panel 4: Configuración y Ajustes -->
             <div class="admin-panel" id="panel-settings">
                 <div class="admin-card">
                     <div class="admin-card-title">
-                        <h2>ConfiguraciÃ³n General de la Tienda</h2>
+                        <h2>Configuración General de la Tienda</h2>
                     </div>
                     
                     <form id="settings-form" style="display: flex; flex-direction: column; gap: 20px; max-width: 600px;">
@@ -3831,9 +3954,9 @@ FILE: admin.html
                         </div>
                         
                         <div class="form-group">
-                            <label for="cfg-whatsapp">NÃºmero de WhatsApp de Destino (para compras) *</label>
+                            <label for="cfg-whatsapp">Número de WhatsApp de Destino (para compras) *</label>
                             <input type="text" id="cfg-whatsapp" class="form-control" placeholder="Ej: 5491133224455" required>
-                            <span class="form-help">Ingresar cÃ³digo de paÃ­s y cÃ³digo de Ã¡rea sin el 15. Ej: 5491133224455.</span>
+                            <span class="form-help">Ingresar código de país y código de área sin el 15. Ej: 5491133224455.</span>
                         </div>
                         
                         <div class="form-group">
@@ -3842,13 +3965,13 @@ FILE: admin.html
                         </div>
                         
                         <div class="form-group">
-                            <label for="cfg-shipping">Mensaje Informativo de EnvÃ­o</label>
-                            <input type="text" id="cfg-shipping" class="form-control" placeholder="Ej: EnvÃ­os a todo el paÃ­s">
+                            <label for="cfg-shipping">Mensaje Informativo de Envío</label>
+                            <input type="text" id="cfg-shipping" class="form-control" placeholder="Ej: Envíos a todo el país">
                         </div>
                         
                         <div class="form-group">
                             <label for="cfg-banner">Mensaje del Banner Superior de Promociones</label>
-                            <input type="text" id="cfg-banner" class="form-control" placeholder="Ej: âœ¨ Â¡SÃ© tu propia inspiraciÃ³n! âœ¨">
+                            <input type="text" id="cfg-banner" class="form-control" placeholder="Ej: ✨ ¡Sé tu propia inspiración! ✨">
                         </div>
                         
                         <button type="submit" class="btn btn-primary" style="width: fit-content; padding: 12px 30px; border-radius: 8px; align-self: flex-start;">
@@ -3858,48 +3981,48 @@ FILE: admin.html
                     </form>
                 </div>
                 
-                <!-- Cambio de ContraseÃ±a -->
+                <!-- Cambio de Contraseña -->
                 <div class="admin-card">
                     <div class="admin-card-title">
-                        <h2>Cambiar ContraseÃ±a de Administrador</h2>
+                        <h2>Cambiar Contraseña de Administrador</h2>
                     </div>
                     
                     <form id="password-change-form" style="display: flex; flex-direction: column; gap: 20px; max-width: 600px;">
                         <div class="form-group">
-                            <label for="pwd-new">Nueva ContraseÃ±a *</label>
-                            <input type="password" id="pwd-new" class="form-control" placeholder="Nueva contraseÃ±a de administrador" minlength="6" required>
+                            <label for="pwd-new">Nueva Contraseña *</label>
+                            <input type="password" id="pwd-new" class="form-control" placeholder="Nueva contraseña de administrador" minlength="6" required>
                         </div>
                         <div class="form-group">
-                            <label for="pwd-confirm">Confirmar Nueva ContraseÃ±a *</label>
-                            <input type="password" id="pwd-confirm" class="form-control" placeholder="Repite la nueva contraseÃ±a" minlength="6" required>
+                            <label for="pwd-confirm">Confirmar Nueva Contraseña *</label>
+                            <input type="password" id="pwd-confirm" class="form-control" placeholder="Repite la nueva contraseña" minlength="6" required>
                         </div>
                         
                         <button type="submit" class="btn btn-primary" style="width: fit-content; padding: 12px 30px; border-radius: 8px; align-self: flex-start; background: #3b82f6; border-color: #3b82f6; box-shadow: none;">
                             <i data-lucide="key" style="width: 18px; height: 18px;"></i>
-                            Actualizar ContraseÃ±a
+                            Actualizar Contraseña
                         </button>
                     </form>
                 </div>
 
-                <!-- ConfiguraciÃ³n de EnvÃ­os y Cupones -->
+                <!-- Configuración de Envíos y Cupones -->
                 <div class="admin-card">
                     <div class="admin-card-title">
-                        <h2>ConfiguraciÃ³n Comercial (EnvÃ­os y Cupones)</h2>
+                        <h2>Configuración Comercial (Envíos y Cupones)</h2>
                     </div>
                     
                     <form id="shipping-rates-form" style="display: flex; flex-direction: column; gap: 20px; margin-bottom: 30px;">
-                        <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 5px;">Tarifas de EnvÃ­o</h3>
+                        <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 5px;">Tarifas de Envío</h3>
                         <div class="form-row form-row-3">
                             <div class="form-group">
                                 <label for="ship-retiro">Retiro en Taller ($)</label>
                                 <input type="number" id="ship-retiro" class="form-control" placeholder="Gratis" value="0" min="0" required>
                             </div>
                             <div class="form-group">
-                                <label for="ship-moto">EnvÃ­o por Moto ($)</label>
+                                <label for="ship-moto">Envío por Moto ($)</label>
                                 <input type="number" id="ship-moto" class="form-control" placeholder="Costo Moto" min="0" required>
                             </div>
                             <div class="form-group">
-                                <label for="ship-correo">EnvÃ­o por Correo ($)</label>
+                                <label for="ship-correo">Envío por Correo ($)</label>
                                 <input type="number" id="ship-correo" class="form-control" placeholder="Costo Correo" min="0" required>
                             </div>
                         </div>
@@ -3912,10 +4035,10 @@ FILE: admin.html
                     <div style="border-top: 1px dashed var(--border-color); padding-top: 20px;">
                         <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 10px;">Gestor de Cupones</h3>
                         
-                        <!-- Formulario para agregar cupÃ³n -->
+                        <!-- Formulario para agregar cupón -->
                         <form id="add-coupon-form" style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap;">
                             <div class="form-group" style="margin-bottom: 0; min-width: 180px;">
-                                <label for="new-coupon-code" style="font-size: 0.75rem;">CÃ³digo del CupÃ³n</label>
+                                <label for="new-coupon-code" style="font-size: 0.75rem;">Código del Cupón</label>
                                 <input type="text" id="new-coupon-code" class="form-control" style="text-transform: uppercase; padding: 6px 12px; font-size: 0.85rem;" placeholder="Ej. LIQUIDACION" required>
                             </div>
                             <div class="form-group" style="margin-bottom: 0; min-width: 120px;">
@@ -3924,7 +4047,7 @@ FILE: admin.html
                             </div>
                             <button type="submit" class="btn btn-primary" style="padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; height: 35px;">
                                 <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
-                                Crear CupÃ³n
+                                Crear Cupón
                             </button>
                         </form>
 
@@ -3933,13 +4056,13 @@ FILE: admin.html
                             <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;" id="coupons-table">
                                 <thead>
                                     <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-secondary);">
-                                        <th style="padding: 8px;">CÃ³digo</th>
+                                        <th style="padding: 8px;">Código</th>
                                         <th style="padding: 8px;">Descuento</th>
                                         <th style="padding: 8px; text-align: right;">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="coupons-list-body">
-                                    <!-- Se puebla dinÃ¡micamente -->
+                                    <!-- Se puebla dinámicamente -->
                                 </tbody>
                             </table>
                         </div>
@@ -3952,7 +4075,7 @@ FILE: admin.html
                         <h2 style="color: #ef4444;">Zona de Mantenimiento</h2>
                     </div>
                     <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;">
-                        Â¿Necesitas restablecer la tienda a su catÃ¡logo inicial para demostraciÃ³n? Esta opciÃ³n eliminarÃ¡ todos los cambios en productos y configuraciones hechos hasta ahora y reinstalarÃ¡ los datos de prueba oficiales.
+                        ¿Necesitas restablecer la tienda a su catálogo inicial para demostración? Esta opción eliminará todos los cambios en productos y configuraciones hechos hasta ahora y reinstalará los datos de prueba oficiales.
                     </p>
                     <button class="btn" id="btn-reset-db" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1.5px solid rgba(239, 68, 68, 0.3); padding: 10px 20px; border-radius: 8px;">
                         <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
@@ -3963,7 +4086,7 @@ FILE: admin.html
         </div>
     </div>
 
-    <!-- 3. Modal de CreaciÃ³n / EdiciÃ³n de Producto (ABM) -->
+    <!-- 3. Modal de Creación / Edición de Producto (ABM) -->
     <div class="modal-overlay" id="admin-product-modal">
         <div class="modal-content" style="max-width: 650px; grid-template-columns: 1fr;">
             <button class="modal-close" id="admin-modal-close" aria-label="Cerrar modal">
@@ -3980,8 +4103,8 @@ FILE: admin.html
                     </div>
                     
                     <div class="form-group">
-                        <label for="prod-description">DescripciÃ³n / Detalles *</label>
-                        <textarea id="prod-description" class="form-control" rows="3" placeholder="Detalles de la tela, diseÃ±o y corte..." required></textarea>
+                        <label for="prod-description">Descripción / Detalles *</label>
+                        <textarea id="prod-description" class="form-control" rows="3" placeholder="Detalles de la tela, diseño y corte..." required></textarea>
                     </div>
 
                     <div class="form-row form-row-2">
@@ -3990,9 +4113,9 @@ FILE: admin.html
                             <input type="number" id="prod-price" class="form-control" placeholder="18500" required>
                         </div>
                         <div class="form-group">
-                            <label for="prod-category">CategorÃ­a *</label>
+                            <label for="prod-category">Categoría *</label>
                             <select id="prod-category" class="form-control" required>
-                                <!-- CategorÃ­as cargadas dinÃ¡micamente -->
+                                <!-- Categorías cargadas dinámicamente -->
                             </select>
                         </div>
                     </div>
@@ -4000,7 +4123,7 @@ FILE: admin.html
                     <div class="form-group">
                         <label>Talles Disponibles</label>
                         <div class="admin-talles-chips" id="admin-talles-chips">
-                            <!-- Chips interactivos de talles se inyectan aquÃ­ -->
+                            <!-- Chips interactivos de talles se inyectan aquí -->
                         </div>
                         <div class="custom-talle-wrap" style="display: flex; gap: 8px; margin-top: 8px; max-width: 280px;">
                             <input type="text" id="custom-talle-input" class="form-control" style="padding: 6px 12px; font-size: 0.8rem;" placeholder="Otro talle (ej. 44, XL)">
@@ -4022,7 +4145,7 @@ FILE: admin.html
                         </div>
                         <div class="switch-group">
                             <div class="switch-label">
-                                <span class="switch-title">EdiciÃ³n Limitada</span>
+                                <span class="switch-title">Edición Limitada</span>
                                 <span class="switch-desc">Badge destacado</span>
                             </div>
                             <label class="switch">
@@ -4041,7 +4164,7 @@ FILE: admin.html
                             </div>
                             <div class="drop-zone" id="drop-zone">
                                 <i data-lucide="image" style="color: var(--accent); width: 28px; height: 28px;"></i>
-                                <p>ArrastrÃ¡ la foto principal aquÃ­ o haz click</p>
+                                <p>Arrastrá la foto principal aquí o haz click</p>
                                 <span>Formatos: JPG, PNG, WEBP</span>
                                 <input type="file" id="file-input" accept="image/*">
                             </div>
@@ -4057,7 +4180,7 @@ FILE: admin.html
                             </div>
                             <div class="drop-zone" id="additional-drop-zone" style="padding: 15px;">
                                 <i data-lucide="images" style="color: var(--accent); width: 28px; height: 28px;"></i>
-                                <p>ArrastrÃ¡ mÃ¡s fotos o haz click (MÃºltiple)</p>
+                                <p>Arrastrá más fotos o haz click (Múltiple)</p>
                                 <span>Formatos: JPG, PNG, WEBP</span>
                                 <input type="file" id="additional-file-input" accept="image/*" multiple>
                             </div>
@@ -4073,7 +4196,7 @@ FILE: admin.html
                             </div>
                             <div class="drop-zone" id="video-drop-zone">
                                 <i data-lucide="video" style="color: var(--accent); width: 28px; height: 28px;"></i>
-                                <p>ArrastrÃ¡ el video aquÃ­ o haz click</p>
+                                <p>Arrastrá el video aquí o haz click</p>
                                 <span>Formatos: MP4, MOV, WEBM</span>
                                 <input type="file" id="video-file-input" accept="video/*">
                             </div>
@@ -4095,7 +4218,7 @@ FILE: admin.html
         </div>
     </div>
 
-    <!-- Firebase SDK (VersiÃ³n 8 - para compatibilidad) -->
+    <!-- Firebase SDK (Versión 8 - para compatibilidad) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
@@ -4113,7 +4236,6 @@ FILE: admin.html
     </script>
 </body>
 </html>
-
 
 
 ================================================================================
@@ -4192,7 +4314,7 @@ button, input, select, textarea {
 /* Banner superior */
 .announcement-banner {
     background: linear-gradient(90deg, #0a0a0c, var(--accent-dark), #0a0a0c);
-    color: var(--white);
+    color: #ffffff;
     text-align: center;
     padding: 12px 10px;
     font-family: var(--font-serif);
@@ -4244,11 +4366,11 @@ header {
     height: 44px;
     border-radius: 50%;
     background: #121216;
-    border: 1.5px solid var(--accent);
+    border: 1.5px solid #000000;
     display: flex;
     justify-content: center;
     align-items: center;
-    box-shadow: 0 0 15px var(--accent-glow);
+    box-shadow: none;
 }
 
 .logo-img {
@@ -4263,14 +4385,14 @@ header {
     border-radius: 50%;
     object-fit: cover;
     overflow: hidden;
-    border: 1.5px solid var(--accent);
-    box-shadow: 0 0 12px var(--accent-glow);
+    border: 1.5px solid #000000;
+    box-shadow: none;
     transition: var(--transition-smooth);
 }
 
 .logo-img-original:hover {
     transform: scale(1.05);
-    box-shadow: 0 0 18px rgba(212, 175, 55, 0.35);
+    box-shadow: none;
 }
 
 .logo-text {
@@ -4693,7 +4815,7 @@ nav {
 }
 
 .product-card-media::after {
-    content: 'Ver Detalles âœ§';
+    content: 'Ver Detalles ✧';
     position: absolute;
     top: 50%;
     left: 50%;
@@ -5951,7 +6073,7 @@ input:checked + .slider:before {
 }
 
 /* ==========================================================================
-   NUEVOS ESTILOS: CARRUSEL DE IMÃGENES Y VIDEO EN EL MODAL DE DETALLES
+   NUEVOS ESTILOS: CARRUSEL DE IMÁGENES Y VIDEO EN EL MODAL DE DETALLES
    ========================================================================== */
 
 .carousel-container {
@@ -6113,10 +6235,10 @@ input:checked + .slider:before {
 
 
 /* ==========================================================================
-   NUEVOS ESTILOS: ESTADÃSTICAS, FILTROS Y CHIPS EN EL ADMINISTRADOR
+   NUEVOS ESTILOS: ESTADÍSTICAS, FILTROS Y CHIPS EN EL ADMINISTRADOR
    ========================================================================== */
 
-/* EstadÃ­sticas RÃ¡pidas */
+/* Estadísticas Rápidas */
 .admin-stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -6255,17 +6377,31 @@ body.light-theme {
 
 /* Ajustes especiales para elementos en tema claro */
 body.light-theme header {
-    background: rgba(253, 251, 247, 0.85);
+    background: rgba(10, 10, 12, 0.95);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme header .nav-link {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+body.light-theme header .nav-link:hover, 
+body.light-theme header .nav-link.active {
+    color: var(--accent);
+    background: rgba(212, 175, 55, 0.08);
+}
+
+body.light-theme header .cart-trigger {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+body.light-theme header .cart-trigger:hover {
+    color: var(--accent);
 }
 
 body.light-theme .logo-circle {
     background: #f6f3eb;
     box-shadow: 0 0 10px var(--accent-glow);
-}
-
-body.light-theme .nav-link:hover, 
-body.light-theme .nav-link.active {
-    background: rgba(184, 149, 43, 0.08);
 }
 
 body.light-theme .hero {
@@ -6322,7 +6458,7 @@ body.light-theme .cart-total-details {
 
 
 /* ==========================================================================
-   NUEVOS ESTILOS: HERO SLIDER CON DESVANECIMIENTO DINÃMICO
+   NUEVOS ESTILOS: HERO SLIDER CON DESVANECIMIENTO DINÁMICO
    ========================================================================== */
 
 #hero-slider-section {
@@ -6469,7 +6605,7 @@ body.light-theme .btn-favorite {
 
 
 /* ==========================================================================
-   NUEVOS ESTILOS: TABLA DE GUÃA DE TALLES INTERACTIVA
+   NUEVOS ESTILOS: TABLA DE GUÍA DE TALLES INTERACTIVA
    ========================================================================== */
 
 .size-guide-link {
@@ -6502,7 +6638,7 @@ body.light-theme .size-guide-table tr:hover {
     background: rgba(0, 0, 0, 0.02);
 }
 
-/* AnimaciÃ³n de slideDown simple */
+/* Animación de slideDown simple */
 .size-guide-container {
     animation: slideDown 0.35s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
@@ -6519,7 +6655,7 @@ body.light-theme .size-guide-table tr:hover {
 }
 
 /* ==========================================================================
-   NUEVOS ESTILOS: ORDENAMIENTO Y BADGES DE URGENCIA (STOCK CRÃTICO)
+   NUEVOS ESTILOS: ORDENAMIENTO Y BADGES DE URGENCIA (STOCK CRÍTICO)
    ========================================================================== */
 
 .sort-box {
@@ -6593,110 +6729,60 @@ body.light-theme .detail-urgency-msg {
     border-color: rgba(185, 28, 28, 0.1);
 }
 
+/* ==========================================================================
+   SECCIÓN: GUÍA DE TALLES (¿Cómo saber tu talle?)
+   ========================================================================== */
 
-
-
-================================================================================
-INSTRUCTIONS & RULES: Firebase & Storage Configuration
-================================================================================
-# Manual de ConfiguraciÃ³n de Firebase
-
-Esta guÃ­a explica paso a paso cÃ³mo obtener y configurar las credenciales necesarias en tu archivo [firebase-config.js](file:///c:/Users/aleba/OneDrive/Documentos/Proyectos/curvys-store/firebase-config.js) para llevar tu tienda a producciÃ³n utilizando Firebase Firestore (para base de datos) y Firebase Storage (para almacenar las fotos).
-
----
-
-## Parte 1: Configurar Firebase
-
-### Paso 1: Crear el proyecto en Firebase Console
-1. Entra a la [Consola de Firebase](https://console.firebase.google.com/) e inicia sesiÃ³n con tu cuenta de Google.
-2. Haz clic en el botÃ³n **Agregar proyecto** (o *Crear un proyecto*).
-3. Escribe el nombre de tu proyecto (por ejemplo: `Curvys Store`) y haz clic en **Continuar**.
-4. En el paso de Google Analytics, puedes desactivarlo si deseas una configuraciÃ³n mÃ¡s rÃ¡pida, y haz clic en **Crear proyecto**. Espera a que cargue y presiona **Continuar**.
-
----
-
-### Paso 2: Registrar una aplicaciÃ³n Web
-1. En la pantalla principal de tu proyecto (el Panel de Control), haz clic en el icono web **`</>`** (debajo del texto *"Comienza agregando Firebase a tu app"*).
-2. Ponle un nombre de registro a tu app (ejemplo: `curvys-web`) y haz clic en **Registrar app**.
-3. Te aparecerÃ¡ un bloque de cÃ³digo con un objeto llamado `firebaseConfig`. Copia cada uno de esos valores y pÃ©galos en tu archivo [firebase-config.js](file:///c:/Users/aleba/OneDrive/Documentos/Proyectos/curvys-store/firebase-config.js):
-   - `apiKey` âž¡ï¸ `apiKey`
-   - `authDomain` âž¡ï¸ `authDomain`
-   - `projectId` âž¡ï¸ `projectId`
-   - `storageBucket` âž¡ï¸ `storageBucket`
-   - `messagingSenderId` âž¡ï¸ `messagingSenderId`
-   - `appId` âž¡ï¸ `appId`
-
----
-
-### Paso 3: Habilitar Firestore Database
-1. En el menÃº de navegaciÃ³n izquierdo de la consola de Firebase, haz clic en **CompilaciÃ³n** (Build) y selecciona **Firestore Database**.
-2. Haz clic en el botÃ³n **Crear base de datos**.
-3. Selecciona la ubicaciÃ³n del servidor (ej. `us-central` para AmÃ©rica Latina) y haz clic en **Siguiente**.
-4. Selecciona **Iniciar en modo de producciÃ³n** (las reglas seguras las configuraremos en el Paso 5) y presiona **Habilitar**.
-
----
-
-### Paso 4: Habilitar AutenticaciÃ³n y Crear Usuario Administrador
-1. En el menÃº izquierdo, haz clic en **CompilaciÃ³n** (Build) y selecciona **Authentication**.
-2. Haz clic en **Comenzar** (Get Started).
-3. En la pestaÃ±a *MÃ©todo de inicio de sesiÃ³n*, selecciona **Correo electrÃ³nico/contraseÃ±a**, actÃ­valo (solo la primera opciÃ³n: *Habilitar*) y presiona **Guardar**.
-4. Ve a la pestaÃ±a **Users** (Usuarios) en la parte superior.
-5. Haz clic en **Agregar usuario**.
-6. Introduce el correo: `admin@curvys.com` y escribe una contraseÃ±a segura de administrador. ApÃºntala bien y presiona **Agregar usuario**.
-
----
-
-### Paso 5: Configurar las Reglas de Seguridad en Firestore
-1. Vuelve a **Firestore Database** en el menÃº izquierdo.
-2. Haz clic en la pestaÃ±a **Reglas** (Rules) en la parte superior.
-3. Reemplaza el bloque de cÃ³digo de reglas existente por el siguiente (para que cualquiera pueda ver los productos/ajustes pero solo el administrador autenticado pueda modificar datos o leer los pedidos):
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Colecciones de lectura pÃºblica y escritura solo para el administrador
-    match /products/{document} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-    match /settings/{document} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-    // ColecciÃ³n de pedidos: cualquiera puede crear (escribir) un pedido al comprar, 
-    // pero solo el administrador autenticado puede verlos (leer) o editarlos.
-    match /orders/{document} {
-      allow create: if true;
-      allow read, update, delete: if request.auth != null;
-    }
-  }
+.size-guide-section {
+    padding: 60px 0;
+    background: var(--bg-primary);
+    transition: var(--transition-smooth);
 }
-```
-4. Haz clic en el botÃ³n **Publicar** para activar las reglas.
 
----
-
-### Paso 6: Habilitar y Configurar Firebase Storage (Fotos)
-1. En el menÃº de navegaciÃ³n izquierdo, ve a **CompilaciÃ³n** (Build) y selecciona **Storage**.
-2. Haz clic en **Comenzar**.
-3. Selecciona **Iniciar en modo de prueba** (esto crearÃ¡ reglas temporales abiertas) y haz clic en **Siguiente**.
-4. Selecciona la ubicaciÃ³n geogrÃ¡fica (puedes dejar la misma que Firestore) y haz clic en **Listo**.
-5. Una vez creado el bucket de almacenamiento, haz clic en la pestaÃ±a **Reglas** (Rules) de la parte superior.
-6. Reemplaza las reglas actuales con las siguientes (permite que todo el pÃºblico vea las fotos del catÃ¡logo pero restringe la subida/modificaciÃ³n exclusivamente al administrador autenticado):
-
-```javascript
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-  }
+.size-guide-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 30px;
+    margin-top: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    transition: var(--transition-smooth);
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
-```
-7. Haz clic en **Publicar** para activar las reglas de Storage.
 
+.size-guide-img-container {
+    width: 100%;
+    max-width: 700px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.size-guide-img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: contain;
+    /* Por defecto (tema oscuro): invertimos colores para integrarla a la estética oscura */
+    filter: invert(0.92) hue-rotate(180deg) brightness(1.1) contrast(1.05);
+    transition: filter 0.3s ease;
+}
+
+/* En tema claro: mostramos la imagen en sus colores originales */
+body.light-theme .size-guide-img {
+    filter: none;
+}
+
+/* Responsividad para la guía de talles */
+@media (max-width: 768px) {
+    .size-guide-section {
+        padding: 40px 0;
+    }
+    .size-guide-card {
+        padding: 15px;
+        border-radius: 12px;
+    }
+}
 
 
