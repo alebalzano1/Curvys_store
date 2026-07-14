@@ -14,7 +14,6 @@ const initialProducts = [
             "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=800&auto=format&fit=crop",
             "https://images.unsplash.com/photo-1608231387042-66d1773070a5?q=80&w=800&auto=format&fit=crop"
         ],
-        video: "https://assets.mixkit.co/videos/preview/mixkit-fashion-woman-with-a-silver-jacket-vertical-40292-large.mp4",
         inStock: true,
         isLimited: true,
         createdAt: new Date().toISOString()
@@ -31,7 +30,6 @@ const initialProducts = [
             "https://images.unsplash.com/photo-1608231387042-66d1773070a5?q=80&w=800&auto=format&fit=crop",
             "https://images.unsplash.com/photo-1574169208507-84376144848b?q=80&w=800&auto=format&fit=crop"
         ],
-        video: "",
         inStock: true,
         isLimited: true,
         createdAt: new Date().toISOString()
@@ -48,7 +46,6 @@ const initialProducts = [
             "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?q=80&w=800&auto=format&fit=crop",
             "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=800&auto=format&fit=crop"
         ],
-        video: "",
         inStock: true,
         isLimited: false,
         createdAt: new Date().toISOString()
@@ -64,7 +61,6 @@ const initialProducts = [
         images: [
             "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=800&auto=format&fit=crop"
         ],
-        video: "",
         inStock: true,
         isLimited: true,
         createdAt: new Date().toISOString()

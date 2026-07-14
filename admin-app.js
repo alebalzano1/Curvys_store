@@ -16,7 +16,6 @@ let settings = {};
 let currentEditingProductId = null;
 let currentUploadedImageUrl = "";
 let currentAdditionalImages = [];
-let currentUploadedVideoUrl = "";
 
 // Variables de estado adicionales para filtros y talles
 let selectedAdminSizes = [];
@@ -58,9 +57,6 @@ const DOM = {
     additionalDropZone: document.getElementById("additional-drop-zone"),
     additionalFileInput: document.getElementById("additional-file-input"),
     additionalPreviewsContainer: document.getElementById("additional-previews-container"),
-    videoDropZone: document.getElementById("video-drop-zone"),
-    videoFileInput: document.getElementById("video-file-input"),
-    videoPreviewContainer: document.getElementById("video-preview-container"),
     
     // Chips de Talles
     adminTallesChips: document.getElementById("admin-talles-chips"),
@@ -751,10 +747,6 @@ function openProductModal(productId = null) {
                 currentAdditionalImages = [];
             }
             renderAdditionalPreviews();
-            
-            // Cargar video
-            currentUploadedVideoUrl = product.video || "";
-            renderVideoPreview();
         }
     } else {
         // Modo Crear Nuevo
@@ -764,10 +756,8 @@ function openProductModal(productId = null) {
         document.getElementById("prod-limited").checked = true;
         currentUploadedImageUrl = "";
         currentAdditionalImages = [];
-        currentUploadedVideoUrl = "";
         DOM.imagePreview.innerHTML = "<span>Sin Imagen</span>";
         renderAdditionalPreviews();
-        renderVideoPreview();
     }
     
     renderAdminTallesChips();
@@ -808,8 +798,7 @@ async function saveProductForm() {
 
     // Construir el array completo de imágenes (Principal + Adicionales)
     let images = [finalImageUrl, ...currentAdditionalImages];
-    const videoUrl = currentUploadedVideoUrl || "";
-
+ 
     const productData = {
         id: currentEditingProductId || `prod-${Date.now()}`,
         name,
@@ -819,7 +808,6 @@ async function saveProductForm() {
         sizes,
         image: finalImageUrl,
         images: images,
-        video: videoUrl,
         inStock,
         isLimited,
         createdAt: existingProduct ? existingProduct.createdAt : new Date().toISOString()
@@ -904,41 +892,14 @@ function setupDragAndDrop() {
             }
         });
     }
-
-    // 3. Cargador de Video
-    if (DOM.videoDropZone && DOM.videoFileInput) {
-        DOM.videoDropZone.addEventListener("click", () => DOM.videoFileInput.click());
-        DOM.videoFileInput.addEventListener("change", (e) => {
-            if (e.target.files.length > 0) handleUploadedFile(e.target.files[0], 'video');
-        });
-        DOM.videoDropZone.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            DOM.videoDropZone.style.borderColor = "var(--accent)";
-            DOM.videoDropZone.style.background = "rgba(212, 175, 55, 0.05)";
-        });
-        DOM.videoDropZone.addEventListener("dragleave", () => {
-            DOM.videoDropZone.style.borderColor = "var(--border-color)";
-            DOM.videoDropZone.style.background = "rgba(255, 255, 255, 0.01)";
-        });
-        DOM.videoDropZone.addEventListener("drop", (e) => {
-            e.preventDefault();
-            DOM.videoDropZone.style.borderColor = "var(--border-color)";
-            DOM.videoDropZone.style.background = "rgba(255, 255, 255, 0.01)";
-            if (e.dataTransfer.files.length > 0) handleUploadedFile(e.dataTransfer.files[0], 'video');
-        });
-    }
 }
 
 // Procesar el archivo cargado y enviarlo a Firebase Storage
 async function handleUploadedFile(file, target) {
     if (!file) return;
     
-    // Validar tipo (imagen / video)
-    if (target === 'video' && !file.type.startsWith("video/")) {
-        showToast("Por favor, selecciona un archivo de video válido.");
-        return;
-    }
-    if (target !== 'video' && !file.type.startsWith("image/")) {
+    // Validar tipo (imagen)
+    if (!file.type.startsWith("image/")) {
         showToast("Por favor, selecciona una imagen válida.");
         return;
     }
@@ -963,13 +924,6 @@ async function handleUploadedFile(file, target) {
         const noMsg = document.getElementById("no-additional-msg");
         if (noMsg) noMsg.remove();
         DOM.additionalPreviewsContainer.appendChild(loadingThumb);
-    } else if (target === 'video') {
-        DOM.videoPreviewContainer.innerHTML = `
-            <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                <div class="loader-pulse" style="width: 20px; height: 20px; border: 2.5px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-                <span style="font-size: 0.65rem; color: var(--text-secondary);">Subiendo...</span>
-            </div>
-        `;
     }
 
     try {
@@ -986,10 +940,6 @@ async function handleUploadedFile(file, target) {
             currentAdditionalImages.push(url);
             renderAdditionalPreviews();
             showToast("¡Foto carrusel agregada con éxito! 🖼️");
-        } else if (target === 'video') {
-            currentUploadedVideoUrl = url;
-            renderVideoPreview();
-            showToast("¡Video de la prenda subido con éxito! 🎥");
         }
     } catch (error) {
         console.error(error);
@@ -1001,8 +951,6 @@ async function handleUploadedFile(file, target) {
             const loadingThumb = document.getElementById("additional-loading-thumb");
             if (loadingThumb) loadingThumb.remove();
             renderAdditionalPreviews();
-        } else if (target === 'video') {
-            renderVideoPreview();
         }
         
         showToast(`Error al subir archivo: ${error.message || "Error crítico."}`);
@@ -1037,34 +985,6 @@ window.removeAdditionalImage = function(index) {
     renderAdditionalPreviews();
 };
 
-// Renderizar preview de video en el modal
-function renderVideoPreview() {
-    if (!DOM.videoPreviewContainer) return;
-    
-    DOM.videoPreviewContainer.innerHTML = "";
-    
-    if (!currentUploadedVideoUrl) {
-        DOM.videoPreviewContainer.innerHTML = "<span>Sin Video</span>";
-        return;
-    }
-    
-    const wrapper = document.createElement("div");
-    wrapper.className = "video-preview-box";
-    wrapper.innerHTML = `
-        <video src="${currentUploadedVideoUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 6px;" muted playsinline></video>
-        <button type="button" class="video-preview-remove" onclick="removeUploadedVideo()" title="Eliminar video">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline-block; vertical-align:middle; margin-right:2px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            Eliminar
-        </button>
-    `;
-    DOM.videoPreviewContainer.appendChild(wrapper);
-}
-
-// Eliminar video
-window.removeUploadedVideo = function() {
-    currentUploadedVideoUrl = "";
-    renderVideoPreview();
-};
 
 // RENDERIZAR GESTOR DE CATEGORÍAS
 function renderCategoriesManager() {

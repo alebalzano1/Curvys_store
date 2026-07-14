@@ -68,16 +68,12 @@ const DOM = {
     sizeGuideContainer: document.getElementById("size-guide-container"),
     sizeGuideRows: document.getElementById("size-guide-rows"),
 
-    // Carrusel y Video
+    // Carrusel
     carouselContainer: document.getElementById("modal-carousel-container"),
     carouselTrack: document.getElementById("modal-carousel-track"),
     carouselPrev: document.getElementById("carousel-prev"),
     carouselNext: document.getElementById("carousel-next"),
     carouselIndicators: document.getElementById("carousel-indicators"),
-    videoBadge: document.getElementById("modal-video-badge"),
-    videoContainer: document.getElementById("modal-video-container"),
-    videoElement: document.getElementById("modal-video"),
-    videoCloseBtn: document.getElementById("modal-video-close"),
     
     // Nuevos Elementos Tienda
     themeToggle: document.getElementById("theme-toggle"),
@@ -223,21 +219,6 @@ function registerEventListeners() {
         });
     }
 
-    // Toggle de Video y Fotos en Modal
-    if (DOM.videoBadge) {
-        DOM.videoBadge.addEventListener("click", () => {
-            if (DOM.videoElement && DOM.videoElement.src) {
-                DOM.carouselContainer.style.display = "none";
-                DOM.videoContainer.style.display = "block";
-                DOM.videoElement.play().catch(err => console.log("Auto-play blocked or error: ", err));
-            }
-        });
-    }
-    if (DOM.videoCloseBtn) {
-        DOM.videoCloseBtn.addEventListener("click", () => {
-            closeVideoPlayer();
-        });
-    }
 
     // Tema Claro/Oscuro Toggle
     if (DOM.themeToggle) {
@@ -526,10 +507,6 @@ function openProductModal(product) {
             }
         }
     }
-    
-    // Asegurar que el reproductor de video esté oculto y reiniciado
-    closeVideoPlayer();
-    
     // Resetear estado de la guía de talles
     sizeGuideVisible = false;
     if (DOM.sizeGuideContainer) DOM.sizeGuideContainer.style.display = "none";
@@ -603,21 +580,7 @@ function openProductModal(product) {
             DOM.carouselNext.style.display = "none";
         }
     }
-    
-    // Configurar Video
-    if (DOM.videoBadge) {
-        if (product.video && product.video.trim() !== "") {
-            DOM.videoBadge.style.display = "flex";
-            if (DOM.videoElement) {
-                DOM.videoElement.src = product.video;
-            }
-        } else {
-            DOM.videoBadge.style.display = "none";
-            if (DOM.videoElement) {
-                DOM.videoElement.src = "";
-            }
-        }
-    }
+
     
     // Crear chips de talles
     DOM.modalSizes.innerHTML = "";
@@ -687,15 +650,6 @@ function updateCarousel() {
 }
 
 // Detener reproductor de video y volver a mostrar fotos
-function closeVideoPlayer() {
-    if (DOM.videoElement) {
-        DOM.videoElement.pause();
-        DOM.videoElement.currentTime = 0;
-    }
-    if (DOM.carouselContainer) DOM.carouselContainer.style.display = "block";
-    if (DOM.videoContainer) DOM.videoContainer.style.display = "none";
-}
-
 function toggleDetailModal(open) {
     if (open) {
         DOM.modalOverlay.classList.add("open");
@@ -703,7 +657,6 @@ function toggleDetailModal(open) {
     } else {
         DOM.modalOverlay.classList.remove("open");
         document.body.style.overflow = "";
-        closeVideoPlayer(); // Detener video al cerrar el modal
     }
 }
 
