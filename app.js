@@ -799,7 +799,7 @@ function updateCartUI() {
         
         cart.forEach(item => {
             totalItems += item.quantity;
-            subtotal += item.price * item.quantity;
+            subtotal += (item.price || 0) * item.quantity;
             
             const div = document.createElement("div");
             div.className = "cart-item";
@@ -889,7 +889,7 @@ async function sendWhatsAppOrder() {
     let itemsText = "";
     
     cart.forEach(item => {
-        const itemSubtotal = item.price * item.quantity;
+        const itemSubtotal = (item.price || 0) * item.quantity;
         subtotal += itemSubtotal;
         itemsText += `• *${item.quantity}x* ${item.name}\n  Talle: ${item.size} | Subtotal: $${itemSubtotal.toLocaleString('es-AR')}\n\n`;
     });

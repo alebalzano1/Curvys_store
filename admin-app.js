@@ -1,5 +1,15 @@
 // Admin Panel Application Script - Curvys Store by Moni
 
+function escapeHTML(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 let allProducts = [];
 let allOrders = [];
 let settings = {};
@@ -428,8 +438,11 @@ function registerEventListeners() {
             e.preventDefault();
             const code = DOM.newCouponCodeInput.value.trim().toUpperCase();
             const pct = parseInt(DOM.newCouponPctInput.value) || 0;
-
             if (!code || pct <= 0) return;
+            if (pct > 100) {
+                showToast("El porcentaje de descuento no puede superar el 100%.");
+                return;
+            }
 
             if (!settings.coupons) settings.coupons = {};
             if (settings.coupons[code] !== undefined) {
@@ -563,22 +576,22 @@ function renderOrdersTable() {
         // Formatear items
         const itemsHtml = order.items.map(item => 
             `<div style="font-size: 0.8rem; margin-bottom: 2px;">
-                <strong>${item.quantity}x</strong> ${item.name} <span style="color: var(--accent); font-size: 0.75rem;">(${item.size})</span>
+                <strong>${item.quantity}x</strong> ${escapeHTML(item.name)} <span style="color: var(--accent); font-size: 0.75rem;">(${escapeHTML(item.size)})</span>
              </div>`
         ).join("");
  
         // Dirección / Método de entrega
         let metodoStr = "🏢 Taller";
         if (order.shippingMethod === "moto") {
-            metodoStr = `🛵 Moto<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${order.address || ''}</span>`;
+            metodoStr = `🛵 Moto<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${escapeHTML(order.address || '')}</span>`;
         } else if (order.shippingMethod === "correo") {
-            metodoStr = `📦 Correo<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${order.address || ''}</span>`;
+            metodoStr = `📦 Correo<br><span style="font-size: 0.75rem; color: var(--text-secondary);">${escapeHTML(order.address || '')}</span>`;
         }
  
         // Notas de cliente
         const notasHtml = order.notes 
             ? `<div style="font-size: 0.75rem; color: #fbbf24; margin-top: 4px; font-style: italic;">
-                Obs: "${order.notes}"
+                Obs: "${escapeHTML(order.notes)}"
                </div>`
             : "";
  
@@ -595,21 +608,21 @@ function renderOrdersTable() {
         tr.innerHTML = `
             <td style="white-space: nowrap;">${fechaStr}</td>
             <td>
-                <div style="font-weight: 600; color: var(--white);">${order.clientName}</div>
+                <div style="font-weight: 600; color: var(--white);">${escapeHTML(order.clientName)}</div>
                 <div style="margin-top: 6px; padding: 4px 0; border-top: 1px dashed rgba(255,255,255,0.05); border-bottom: 1px dashed rgba(255,255,255,0.05);">
                     ${itemsHtml}
                 </div>
                 ${notasHtml}
             </td>
             <td>${metodoStr}</td>
-            <td style="font-weight: 600; color: var(--white);">$${order.total.toLocaleString('es-AR')}</td>
+            <td style="font-weight: 600; color: var(--white);">$${(order.total || 0).toLocaleString('es-AR')}</td>
             <td>
                 <select class="form-control select-status" data-id="${order.id}" style="${statusStyle} padding: 4px 8px; font-size: 0.75rem; border-radius: 6px; width: auto; font-weight: 600;">
-                    <option value="Pendiente" ${order.status === 'Pendiente' ? 'selected' : ''}>Pendiente</option>
-                    <option value="Confirmado" ${order.status === 'Confirmado' ? 'selected' : ''}>Confirmado</option>
-                    <option value="Enviado" ${order.status === 'Enviado' ? 'selected' : ''}>Enviado</option>
-                    <option value="Entregado" ${order.status === 'Entregado' || order.status === 'Completado' ? 'selected' : ''}>Entregado</option>
-                    <option value="Cancelado" ${order.status === 'Cancelado' ? 'selected' : ''}>Cancelado</option>
+                     <option value="Pendiente" ${order.status === 'Pendiente' ? 'selected' : ''}>Pendiente</option>
+                     <option value="Confirmado" ${order.status === 'Confirmado' ? 'selected' : ''}>Confirmado</option>
+                     <option value="Enviado" ${order.status === 'Enviado' ? 'selected' : ''}>Enviado</option>
+                     <option value="Entregado" ${order.status === 'Entregado' || order.status === 'Completado' ? 'selected' : ''}>Entregado</option>
+                     <option value="Cancelado" ${order.status === 'Cancelado' ? 'selected' : ''}>Cancelado</option>
                 </select>
             </td>
             <td>
@@ -1310,8 +1323,8 @@ function printOrderInvoice(orderId) {
 
     const itemsHtml = order.items.map(item => `
         <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 12px 10px; color: #111; font-weight: 500;">${item.name}</td>
-            <td style="padding: 12px 10px; text-align: center; font-weight: bold; color: #555;">${item.size}</td>
+            <td style="padding: 12px 10px; color: #111; font-weight: 500;">${escapeHTML(item.name)}</td>
+            <td style="padding: 12px 10px; text-align: center; font-weight: bold; color: #555;">${escapeHTML(item.size)}</td>
             <td style="padding: 12px 10px; text-align: center;">${item.quantity}</td>
             <td style="padding: 12px 10px; text-align: right; color: #555;">$${item.price.toLocaleString('es-AR')}</td>
             <td style="padding: 12px 10px; text-align: right; font-weight: 600; color: #111;">$${(item.price * item.quantity).toLocaleString('es-AR')}</td>
@@ -1447,14 +1460,14 @@ function printOrderInvoice(orderId) {
             <div class="info-section">
                 <div class="card">
                     <h3>Datos de Entrega</h3>
-                    <p style="margin: 6px 0;"><strong>Cliente:</strong> ${order.clientName}</p>
-                    <p style="margin: 6px 0;"><strong>Método:</strong> ${order.shippingMethod.toUpperCase()}</p>
-                    ${order.address ? `<p style="margin: 6px 0;"><strong>Dirección:</strong> ${order.address}</p>` : ""}
+                    <p style="margin: 6px 0;"><strong>Cliente:</strong> ${escapeHTML(order.clientName)}</p>
+                    <p style="margin: 6px 0;"><strong>Método:</strong> ${escapeHTML(order.shippingMethod).toUpperCase()}</p>
+                    ${order.address ? `<p style="margin: 6px 0;"><strong>Dirección:</strong> ${escapeHTML(order.address)}</p>` : ""}
                 </div>
                 <div class="card">
                     <h3>Detalles y Notas</h3>
                     <p style="margin: 6px 0;"><strong>Estado del Pedido:</strong> <span style="font-weight: 600;">${order.status}</span></p>
-                    <p style="margin: 6px 0;"><strong>Notas:</strong> <em>${order.notes || "Sin especificaciones del cliente"}</em></p>
+                    <p style="margin: 6px 0;"><strong>Notas:</strong> <em>${escapeHTML(order.notes) || "Sin especificaciones del cliente"}</em></p>
                 </div>
             </div>
             
@@ -1477,7 +1490,7 @@ function printOrderInvoice(orderId) {
                 <p style="margin: 5px 0;">Subtotal prendas: $${subtotal.toLocaleString('es-AR')}</p>
                 ${discountHtml}
                 ${shippingHtml}
-                <div class="total-price">Total a Cobrar: $${order.total.toLocaleString('es-AR')}</div>
+                <div class="total-price">Total a Cobrar: $${(order.total || 0).toLocaleString('es-AR')}</div>
             </div>
             
             <div style="margin-top: 50px; text-align: center;" class="no-print">
