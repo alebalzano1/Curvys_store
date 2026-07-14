@@ -2531,3 +2531,13 @@ body.light-theme .size-guide-img {
     filter: none;
 }
 
+/* Responsividad para la guía de talles */
+@media (max-width: 768px) {
+    .size-guide-section {
+        padding: 40px 0;
+    }
+    .size-guide-card {
+        padding: 15px;
+        border-radius: 12px;
+    }
+}
