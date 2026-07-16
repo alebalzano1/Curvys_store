@@ -1,5 +1,5 @@
 /* Global Stylesheet - Curvys Store by Moni */
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600;700&family=Alex+Brush&display=swap');
 
 :root {
     --bg-primary: #0a0a0c;
@@ -235,88 +235,168 @@ nav {
     box-shadow: 0 0 10px rgba(212,175,55,0.4);
 }
 
-/* Hero Section */
+/* Hero Section Redesign: Split Layout */
 .hero {
     position: relative;
-    padding: 100px 0 80px;
-    text-align: center;
-    background: radial-gradient(circle at 50% 50%, rgba(212, 175, 55, 0.08) 0%, rgba(10, 10, 12, 0.6) 70%, #0a0a0c 100%),
-                linear-gradient(180deg, rgba(18, 18, 22, 0.5) 0%, #0a0a0c 100%);
+    padding: 60px 0;
+    background-color: var(--bg-card); /* Soft background adapting to theme */
     border-bottom: 1px solid var(--border-color);
     overflow: hidden;
+    text-align: left;
 }
 
 .hero::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-image: radial-gradient(rgba(212, 175, 55, 0.15) 1px, transparent 1px);
-    background-size: 40px 40px;
-    opacity: 0.25;
-    pointer-events: none;
-    z-index: 0;
+    display: none;
 }
 
-.hero-subtitle {
-    font-size: 0.9rem;
-    letter-spacing: 0.35em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 25px;
-    font-weight: 500;
-    display: inline-block;
-    position: relative;
-    z-index: 1;
+.hero-split-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 40px;
+    align-items: center;
 }
 
-.hero-subtitle::after {
-    content: '';
-    position: absolute;
-    bottom: -10px;
-    left: 15%;
-    width: 70%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-}
-
-.hero-title {
-    font-family: var(--font-serif);
-    font-size: 4.5rem;
-    font-weight: 500;
-    margin-bottom: 20px;
-    letter-spacing: 0.15em;
-    color: var(--white);
-    position: relative;
-    z-index: 1;
-    text-shadow: 0 4px 20px rgba(0,0,0,0.6);
-}
-
-@media (max-width: 768px) {
-    .hero-title {
-        font-size: 2.8rem;
-        letter-spacing: 0.1em;
+@media (min-width: 768px) {
+    .hero-split-container {
+        grid-template-columns: 1fr 1.1fr;
+        gap: 60px;
     }
 }
 
-.hero-desc {
-    font-size: 1.15rem;
-    color: var(--text-secondary);
-    max-width: 650px;
-    margin: 0 auto 35px;
-    font-weight: 300;
-    position: relative;
-    z-index: 1;
+.hero-left-image {
+    width: 100%;
+    max-height: 550px;
+    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: var(--shadow-md);
 }
 
-.hero-buttons {
+.hero-left-image img {
+    width: 100%;
+    height: auto;
+    max-height: 550px;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.8s ease;
+}
+
+.hero-left-image:hover img {
+    transform: scale(1.02);
+}
+
+.hero-right-content {
     display: flex;
-    justify-content: center;
-    gap: 20px;
-    position: relative;
-    z-index: 1;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.hero-new-title {
+    margin-bottom: 25px;
+    width: 100%;
+}
+
+.hero-new-title .title-top {
+    display: block;
+    font-family: var(--font-serif);
+    font-size: 3rem;
+    font-weight: 300;
+    letter-spacing: 0.2em;
+    color: var(--text-primary);
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+    .hero-new-title .title-top {
+        font-size: 2.2rem;
+        letter-spacing: 0.15em;
+    }
+}
+
+.hero-new-title .title-bottom {
+    display: block;
+    font-family: 'Alex Brush', cursive;
+    font-size: 3.8rem;
+    color: var(--text-primary);
+    line-height: 1;
+    margin-top: 5px;
+    font-weight: 400;
+}
+
+@media (max-width: 768px) {
+    .hero-new-title .title-bottom {
+        font-size: 3rem;
+    }
+}
+
+.hero-new-desc {
+    font-family: var(--font-sans);
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.8;
+    color: var(--text-primary);
+    margin-bottom: 35px;
+    max-width: 480px;
+}
+
+.hero-new-buttons {
+    display: flex;
+    gap: 15px;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.btn-hero-primary {
+    display: inline-block;
+    background-color: var(--white);
+    color: var(--bg-primary);
+    padding: 14px 40px;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    text-align: center;
+    border-radius: 4px;
+}
+
+body.light-theme .btn-hero-primary {
+    background-color: #000000;
+    color: #ffffff;
+}
+
+.btn-hero-primary:hover {
+    background-color: var(--accent);
+    color: #ffffff;
+    box-shadow: 0 5px 15px rgba(184, 149, 43, 0.3);
+    transform: translateY(-2px);
+}
+
+.btn-hero-secondary {
+    display: inline-block;
+    background-color: transparent;
+    color: var(--text-primary);
+    padding: 14px 40px;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    border: 2px solid var(--text-primary);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    text-align: center;
+    border-radius: 4px;
+}
+
+.btn-hero-secondary:hover {
+    background-color: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-2px);
 }
 
 .btn {
@@ -2135,14 +2215,16 @@ body.light-theme .cart-total-details {
     background-position: center;
     opacity: 0;
     transition: opacity 1.5s ease-in-out;
+    filter: blur(8px);
+    transform: scale(1.05);
 }
 
 .hero-slide.active {
-    opacity: 0.25;
+    opacity: 0.35;
 }
 
 body.light-theme .hero-slide.active {
-    opacity: 0.1;
+    opacity: 0.25;
 }
 
 .hero-content-container {
@@ -2434,3 +2516,5 @@ body.light-theme .size-guide-img {
         border-radius: 12px;
     }
 }
+
+
