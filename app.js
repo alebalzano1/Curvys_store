@@ -110,6 +110,9 @@ async function initApp() {
         loadCart();
         loadFavorites();
 
+        // Registrar Event Listeners de inmediato para que la UI responda rápido
+        registerEventListeners();
+
         // Obtener datos del servicio de base de datos
         products = await FirebaseService.getProducts();
         storeConfig = await FirebaseService.getConfig();
@@ -134,9 +137,6 @@ async function initApp() {
         renderProducts();
         updateCartUI();
 
-        // Registrar Event Listeners
-        registerEventListeners();
-
     } catch (error) {
         console.error("❌ [App] Error al inicializar la tienda:", error);
         showToast("Error al cargar la tienda. Usando datos de respaldo.");
@@ -150,7 +150,6 @@ async function initApp() {
         renderCategories();
         renderProducts();
         updateCartUI();
-        registerEventListeners();
     }
 }
 
@@ -339,6 +338,30 @@ function registerEventListeners() {
             sendWhatsAppOrder();
         });
     }
+
+    // Eventos del Menú Móvil
+    const mobileMenuTrigger = document.getElementById("mobile-menu-trigger");
+    const mobileMenuClose = document.getElementById("mobile-menu-close");
+    const mobileMenuOverlay = document.getElementById("mobile-menu-overlay");
+
+    if (mobileMenuTrigger) {
+        mobileMenuTrigger.addEventListener("click", () => toggleMobileMenu(true));
+    }
+    if (mobileMenuClose) {
+        mobileMenuClose.addEventListener("click", () => toggleMobileMenu(false));
+    }
+    if (mobileMenuOverlay) {
+        mobileMenuOverlay.addEventListener("click", (e) => {
+            if (e.target === mobileMenuOverlay) {
+                toggleMobileMenu(false);
+            }
+        });
+    }
+
+    // Cerrar menú móvil al hacer clic en cualquier enlace
+    document.querySelectorAll(".mobile-nav-link").forEach(link => {
+        link.addEventListener("click", () => toggleMobileMenu(false));
+    });
 }
 
 // Renderizar barra de categorías
@@ -989,15 +1012,41 @@ function showToast(message) {
 // NUEVAS FUNCIONALIDADES COMERCIALES Y VISUALES
 // ==========================================================================
 
-// 1. SISTEMA DE TEMAS (Siempre Claro)
+// 1. SISTEMA DE TEMAS (Claro / Oscuro)
 function initTheme() {
-    setTheme("light");
+    const savedTheme = localStorage.getItem("curvys_theme") || "light";
+    setTheme(savedTheme);
 }
 
 function setTheme(theme) {
-    currentTheme = "light";
-    document.body.classList.add("light-theme");
-    localStorage.setItem("curvys_theme", "light");
+    currentTheme = theme;
+    const themeToggleBtn = document.getElementById("theme-toggle");
+    
+    if (theme === "light") {
+        document.body.classList.add("light-theme");
+        if (themeToggleBtn) {
+            themeToggleBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`;
+        }
+    } else {
+        document.body.classList.remove("light-theme");
+        if (themeToggleBtn) {
+            themeToggleBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`;
+        }
+    }
+    localStorage.setItem("curvys_theme", theme);
+}
+
+// 1.5 CONTROL DE MENÚ MÓVIL
+function toggleMobileMenu(open) {
+    const overlay = document.getElementById("mobile-menu-overlay");
+    if (!overlay) return;
+    if (open) {
+        overlay.classList.add("open");
+        document.body.style.overflow = "hidden";
+    } else {
+        overlay.classList.remove("open");
+        document.body.style.overflow = "";
+    }
 }
 
 // 2. HERO SLIDER AUTOMÁTICO

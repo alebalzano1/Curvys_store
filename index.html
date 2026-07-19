@@ -37,14 +37,22 @@
             </nav>
             
             <div class="header-actions">
+                <!-- Botón de Cambio de Tema (Claro/Oscuro) -->
+                <button class="cart-trigger" id="theme-toggle" title="Cambiar Tema" aria-label="Cambiar Tema">
+                    <i data-lucide="moon" style="width: 22px; height: 22px;"></i>
+                </button>
                 <!-- Botón al Panel Administrador -->
-                <a href="admin.html" class="cart-trigger" title="Panel Administrador" aria-label="Panel Administrador">
+                <a href="admin.html" class="cart-trigger desktop-only" title="Panel Administrador" aria-label="Panel Administrador">
                     <i data-lucide="settings" style="width: 22px; height: 22px;"></i>
                 </a>
                 <!-- Trigger para el Carrito flotante -->
                 <button class="cart-trigger" id="cart-trigger" aria-label="Abrir carrito">
                     <i data-lucide="shopping-bag" style="width: 22px; height: 22px;"></i>
                     <span class="cart-count" id="cart-count">0</span>
+                </button>
+                <!-- Trigger para el Menú Móvil -->
+                <button class="cart-trigger mobile-only" id="mobile-menu-trigger" aria-label="Abrir menú">
+                    <i data-lucide="menu" style="width: 22px; height: 22px;"></i>
                 </button>
             </div>
         </div>
@@ -155,6 +163,28 @@
             </div>
         </div>
     </section>
+
+    <!-- Cajón deslizable del Menú Móvil (Drawer) -->
+    <div class="mobile-menu-overlay" id="mobile-menu-overlay">
+        <div class="mobile-menu-drawer">
+            <div class="mobile-menu-header">
+                <span class="logo-text" style="font-size: 1.3rem;">Curvys.Store</span>
+                <button class="mobile-menu-close" id="mobile-menu-close" aria-label="Cerrar menú">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            
+            <div class="mobile-menu-body">
+                <a href="#catalogo" class="mobile-nav-link">Catálogo</a>
+                <a href="#como-saber-talle" class="mobile-nav-link">¿Cómo saber tu talle?</a>
+                <a href="#contacto" class="mobile-nav-link">Contacto</a>
+                <a href="admin.html" class="mobile-nav-link adm-link">
+                    <i data-lucide="settings" style="width: 16px; height: 16px; display: inline-block; vertical-align: middle; margin-right: 5px;"></i>
+                    Administrador
+                </a>
+            </div>
+        </div>
+    </div>
 
     <!-- Cajón deslizable del Carrito de Compras (Drawer) -->
     <div class="cart-drawer-overlay" id="cart-overlay">

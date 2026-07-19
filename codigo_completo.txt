@@ -1,4 +1,4 @@
-﻿================================================================================
+================================================================================
 FILE: firebase-config.js
 ================================================================================
 // Configuración de Firebase para Curvys Store by Moni
@@ -14,6 +14,7 @@ const firebaseConfig = {
 };
 
 window.firebaseConfig = firebaseConfig;
+
 
 
 ================================================================================
@@ -411,6 +412,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 
+
 ================================================================================
 FILE: seed-data.js
 ================================================================================
@@ -515,6 +517,7 @@ const initialConfig = {
 // Exportar para uso en otros scripts
 window.initialProducts = initialProducts;
 window.initialConfig = initialConfig;
+
 
 
 ================================================================================
@@ -632,6 +635,9 @@ async function initApp() {
         loadCart();
         loadFavorites();
 
+        // Registrar Event Listeners de inmediato para que la UI responda rápido
+        registerEventListeners();
+
         // Obtener datos del servicio de base de datos
         products = await FirebaseService.getProducts();
         storeConfig = await FirebaseService.getConfig();
@@ -656,9 +662,6 @@ async function initApp() {
         renderProducts();
         updateCartUI();
 
-        // Registrar Event Listeners
-        registerEventListeners();
-
     } catch (error) {
         console.error("❌ [App] Error al inicializar la tienda:", error);
         showToast("Error al cargar la tienda. Usando datos de respaldo.");
@@ -672,7 +675,6 @@ async function initApp() {
         renderCategories();
         renderProducts();
         updateCartUI();
-        registerEventListeners();
     }
 }
 
@@ -861,6 +863,30 @@ function registerEventListeners() {
             sendWhatsAppOrder();
         });
     }
+
+    // Eventos del Menú Móvil
+    const mobileMenuTrigger = document.getElementById("mobile-menu-trigger");
+    const mobileMenuClose = document.getElementById("mobile-menu-close");
+    const mobileMenuOverlay = document.getElementById("mobile-menu-overlay");
+
+    if (mobileMenuTrigger) {
+        mobileMenuTrigger.addEventListener("click", () => toggleMobileMenu(true));
+    }
+    if (mobileMenuClose) {
+        mobileMenuClose.addEventListener("click", () => toggleMobileMenu(false));
+    }
+    if (mobileMenuOverlay) {
+        mobileMenuOverlay.addEventListener("click", (e) => {
+            if (e.target === mobileMenuOverlay) {
+                toggleMobileMenu(false);
+            }
+        });
+    }
+
+    // Cerrar menú móvil al hacer clic en cualquier enlace
+    document.querySelectorAll(".mobile-nav-link").forEach(link => {
+        link.addEventListener("click", () => toggleMobileMenu(false));
+    });
 }
 
 // Renderizar barra de categorías
@@ -1511,15 +1537,41 @@ function showToast(message) {
 // NUEVAS FUNCIONALIDADES COMERCIALES Y VISUALES
 // ==========================================================================
 
-// 1. SISTEMA DE TEMAS (Siempre Claro)
+// 1. SISTEMA DE TEMAS (Claro / Oscuro)
 function initTheme() {
-    setTheme("light");
+    const savedTheme = localStorage.getItem("curvys_theme") || "light";
+    setTheme(savedTheme);
 }
 
 function setTheme(theme) {
-    currentTheme = "light";
-    document.body.classList.add("light-theme");
-    localStorage.setItem("curvys_theme", "light");
+    currentTheme = theme;
+    const themeToggleBtn = document.getElementById("theme-toggle");
+    
+    if (theme === "light") {
+        document.body.classList.add("light-theme");
+        if (themeToggleBtn) {
+            themeToggleBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`;
+        }
+    } else {
+        document.body.classList.remove("light-theme");
+        if (themeToggleBtn) {
+            themeToggleBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`;
+        }
+    }
+    localStorage.setItem("curvys_theme", theme);
+}
+
+// 1.5 CONTROL DE MENÚ MÓVIL
+function toggleMobileMenu(open) {
+    const overlay = document.getElementById("mobile-menu-overlay");
+    if (!overlay) return;
+    if (open) {
+        overlay.classList.add("open");
+        document.body.style.overflow = "hidden";
+    } else {
+        overlay.classList.remove("open");
+        document.body.style.overflow = "";
+    }
 }
 
 // 2. HERO SLIDER AUTOMÁTICO
@@ -1642,6 +1694,7 @@ function renderSizeGuide() {
 document.addEventListener("DOMContentLoaded", () => {
     initApp();
 });
+
 
 
 ================================================================================
@@ -3122,6 +3175,7 @@ function playNewOrderSound() {
 document.addEventListener("DOMContentLoaded", initAdmin);
 
 
+
 ================================================================================
 FILE: index.html
 ================================================================================
@@ -3164,14 +3218,22 @@ FILE: index.html
             </nav>
             
             <div class="header-actions">
+                <!-- Botón de Cambio de Tema (Claro/Oscuro) -->
+                <button class="cart-trigger" id="theme-toggle" title="Cambiar Tema" aria-label="Cambiar Tema">
+                    <i data-lucide="moon" style="width: 22px; height: 22px;"></i>
+                </button>
                 <!-- Botón al Panel Administrador -->
-                <a href="admin.html" class="cart-trigger" title="Panel Administrador" aria-label="Panel Administrador">
+                <a href="admin.html" class="cart-trigger desktop-only" title="Panel Administrador" aria-label="Panel Administrador">
                     <i data-lucide="settings" style="width: 22px; height: 22px;"></i>
                 </a>
                 <!-- Trigger para el Carrito flotante -->
                 <button class="cart-trigger" id="cart-trigger" aria-label="Abrir carrito">
                     <i data-lucide="shopping-bag" style="width: 22px; height: 22px;"></i>
                     <span class="cart-count" id="cart-count">0</span>
+                </button>
+                <!-- Trigger para el Menú Móvil -->
+                <button class="cart-trigger mobile-only" id="mobile-menu-trigger" aria-label="Abrir menú">
+                    <i data-lucide="menu" style="width: 22px; height: 22px;"></i>
                 </button>
             </div>
         </div>
@@ -3282,6 +3344,28 @@ FILE: index.html
             </div>
         </div>
     </section>
+
+    <!-- Cajón deslizable del Menú Móvil (Drawer) -->
+    <div class="mobile-menu-overlay" id="mobile-menu-overlay">
+        <div class="mobile-menu-drawer">
+            <div class="mobile-menu-header">
+                <span class="logo-text" style="font-size: 1.3rem;">Curvys.Store</span>
+                <button class="mobile-menu-close" id="mobile-menu-close" aria-label="Cerrar menú">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            
+            <div class="mobile-menu-body">
+                <a href="#catalogo" class="mobile-nav-link">Catálogo</a>
+                <a href="#como-saber-talle" class="mobile-nav-link">¿Cómo saber tu talle?</a>
+                <a href="#contacto" class="mobile-nav-link">Contacto</a>
+                <a href="admin.html" class="mobile-nav-link adm-link">
+                    <i data-lucide="settings" style="width: 16px; height: 16px; display: inline-block; vertical-align: middle; margin-right: 5px;"></i>
+                    Administrador
+                </a>
+            </div>
+        </div>
+    </div>
 
     <!-- Cajón deslizable del Carrito de Compras (Drawer) -->
     <div class="cart-drawer-overlay" id="cart-overlay">
@@ -3512,6 +3596,7 @@ FILE: index.html
     </a>
 </body>
 </html>
+
 
 
 ================================================================================
@@ -4029,6 +4114,7 @@ FILE: admin.html
     </script>
 </body>
 </html>
+
 
 
 ================================================================================
@@ -5155,6 +5241,7 @@ select.form-control {
     max-width: 800px;
     max-height: 90vh;
     overflow-y: auto;
+    overflow-x: hidden;
     position: relative;
     display: grid;
     grid-template-columns: 1fr;
@@ -6092,6 +6179,7 @@ input:checked + .slider:before {
     border-radius: 8px;
     max-height: 150px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .talle-chip {
@@ -6667,8 +6755,232 @@ body.light-theme .size-guide-img {
     }
 }
 
+/* ==========================================================================
+   OPTIMIZACIONES RESPONSIVAS PARA EL PANEL DE CONTROL (ADMIN)
+   ========================================================================== */
 
+/* Problema 1: Header del admin con wrap en mobile */
+@media (max-width: 480px) {
+    .admin-header-container {
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .admin-header-container div {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .admin-header-container .btn {
+        flex: 1;
+        font-size: 0.8rem !important;
+        padding: 8px 12px !important;
+        justify-content: center;
+    }
+    
+    .admin-title {
+        font-size: 1.2rem;
+    }
+}
 
+/* Problema 3: Auditoría general de mobile en admin.html */
 
+/* Barra de pestañas (Tabs) con scroll horizontal suave en móvil */
+@media (max-width: 600px) {
+    .admin-tabs {
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px;
+        gap: 6px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+    }
+    
+    .admin-tab-btn {
+        flex-shrink: 0;
+        padding: 10px 14px;
+        font-size: 0.8rem;
+    }
+    
+    /* Centrar vista previa de subida de imágenes */
+    .image-preview-box {
+        margin: 0 auto;
+    }
+    
+    /* Rótulo de tarjeta de admin responsivo */
+    .admin-card-title {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        text-align: center;
+    }
+    
+    .admin-card-title h2 {
+        font-size: 1.2rem;
+    }
+    
+    .admin-card-title .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    /* Evitar desbordes en celdas de tabla con nombres largos */
+    .admin-table td, .admin-table th {
+        padding: 10px;
+        font-size: 0.8rem;
+    }
+    
+    /* Asegurar que las celdas de acciones se vean compactas */
+    .action-btns {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    
+    /* Barra de filtros de pedidos */
+    .admin-filters-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 12px;
+    }
+    
+    .filter-group {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .filter-group select,
+    .filter-group input {
+        flex-grow: 1;
+    }
+}
 
+/* Asegurar que .table-responsive se comporte como un contenedor de bloque estricto */
+.table-responsive {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
 
+/* ==========================================================================
+   ESTILOS ADICIONALES: MENÚ MÓVIL Y UTILERÍAS RESPONSIVAS
+   ========================================================================== */
+
+/* Utilerías responsivas */
+.mobile-only {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .desktop-only {
+        display: none !important;
+    }
+    .mobile-only {
+        display: flex !important;
+    }
+}
+
+/* Mobile Menu Drawer Overlay */
+.mobile-menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1500;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+}
+
+.mobile-menu-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Mobile Menu Drawer Content */
+.mobile-menu-drawer {
+    position: fixed;
+    top: 0;
+    left: -300px;
+    width: 100%;
+    max-width: 300px;
+    height: 100%;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg);
+    z-index: 1501;
+    display: flex;
+    flex-direction: column;
+    transition: left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mobile-menu-overlay.open .mobile-menu-drawer {
+    left: 0;
+}
+
+.mobile-menu-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.mobile-menu-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    transition: var(--transition-smooth);
+}
+
+.mobile-menu-close:hover {
+    color: var(--accent);
+    transform: rotate(90deg);
+}
+
+.mobile-menu-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mobile-nav-link {
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    padding: 12px 16px;
+    border-radius: 8px;
+    transition: var(--transition-smooth);
+    display: flex;
+    align-items: center;
+}
+
+.mobile-nav-link:hover {
+    background: var(--bg-primary);
+    color: var(--accent);
+    padding-left: 24px;
+}
+
+.mobile-nav-link.adm-link {
+    border-top: 1px dashed var(--border-color);
+    margin-top: 15px;
+    padding-top: 20px;
+    border-radius: 0;
+    color: var(--text-secondary);
+}
+
+.mobile-nav-link.adm-link:hover {
+    color: var(--accent);
+}
