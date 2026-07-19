@@ -3137,6 +3137,10 @@ FILE: index.html
     <meta property="og:title" content="Curvys.Store by Moni - Tienda Oficial">
     <meta property="og:description" content="Catálogo online de ropa femenina de edición limitada. Hacé tu pedido y finalizalo por WhatsApp. Envíos a todo el país.">
     <meta property="og:type" content="website">
+    <meta property="og:image" content="logo.png">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="logo.png">
     
     <!-- Hojas de estilo -->
     <link rel="stylesheet" href="style.css">
@@ -3522,6 +3526,9 @@ FILE: admin.html
     
     <!-- Hojas de estilo -->
     <link rel="stylesheet" href="style.css">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="logo.png">
     
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
