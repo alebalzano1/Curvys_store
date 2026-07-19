@@ -1119,6 +1119,7 @@ select.form-control {
     max-width: 800px;
     max-height: 90vh;
     overflow-y: auto;
+    overflow-x: hidden;
     position: relative;
     display: grid;
     grid-template-columns: 1fr;
@@ -2056,6 +2057,7 @@ input:checked + .slider:before {
     border-radius: 8px;
     max-height: 150px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .talle-chip {
@@ -2630,6 +2632,119 @@ body.light-theme .size-guide-img {
         padding: 4px 8px;
     }
 }
+
+/* ==========================================================================
+   OPTIMIZACIONES RESPONSIVAS PARA EL PANEL DE CONTROL (ADMIN)
+   ========================================================================== */
+
+/* Problema 1: Header del admin con wrap en mobile */
+@media (max-width: 480px) {
+    .admin-header-container {
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .admin-header-container div {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .admin-header-container .btn {
+        flex: 1;
+        font-size: 0.8rem !important;
+        padding: 8px 12px !important;
+        justify-content: center;
+    }
+    
+    .admin-title {
+        font-size: 1.2rem;
+    }
+}
+
+/* Problema 3: Auditoría general de mobile en admin.html */
+
+/* Barra de pestañas (Tabs) con scroll horizontal suave en móvil */
+@media (max-width: 600px) {
+    .admin-tabs {
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px;
+        gap: 6px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+    }
+    
+    .admin-tab-btn {
+        flex-shrink: 0;
+        padding: 10px 14px;
+        font-size: 0.8rem;
+    }
+    
+    /* Centrar vista previa de subida de imágenes */
+    .image-preview-box {
+        margin: 0 auto;
+    }
+    
+    /* Rótulo de tarjeta de admin responsivo */
+    .admin-card-title {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        text-align: center;
+    }
+    
+    .admin-card-title h2 {
+        font-size: 1.2rem;
+    }
+    
+    .admin-card-title .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    /* Evitar desbordes en celdas de tabla con nombres largos */
+    .admin-table td, .admin-table th {
+        padding: 10px;
+        font-size: 0.8rem;
+    }
+    
+    /* Asegurar que las celdas de acciones se vean compactas */
+    .action-btns {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    
+    /* Barra de filtros de pedidos */
+    .admin-filters-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 12px;
+    }
+    
+    .filter-group {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .filter-group select,
+    .filter-group input {
+        flex-grow: 1;
+    }
+}
+
+/* Asegurar que .table-responsive se comporte como un contenedor de bloque estricto */
+.table-responsive {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 
 
 
