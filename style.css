@@ -238,7 +238,7 @@ nav {
 /* Hero Section Redesign: Split Layout */
 .hero {
     position: relative;
-    padding: 60px 0;
+    padding: 40px 0;
     background-color: var(--bg-card); /* Soft background adapting to theme */
     border-bottom: 1px solid var(--border-color);
     overflow: hidden;
@@ -265,7 +265,9 @@ nav {
 
 .hero-left-image {
     width: 100%;
-    max-height: 550px;
+    max-width: 380px;
+    aspect-ratio: 4 / 5;
+    margin: 0 auto;
     overflow: hidden;
     border-radius: 8px;
     box-shadow: var(--shadow-md);
@@ -273,15 +275,11 @@ nav {
 
 .hero-left-image img {
     width: 100%;
-    height: auto;
-    max-height: 550px;
+    height: 100%;
     object-fit: cover;
+    object-position: center top;
     display: block;
     transition: transform 0.8s ease;
-}
-
-.hero-left-image:hover img {
-    transform: scale(1.02);
 }
 
 .hero-right-content {
@@ -1883,10 +1881,11 @@ input:checked + .slider:before {
    ========================================================================== */
 
 .carousel-container {
-    position: relative;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    min-height: 350px;
     overflow: hidden;
     background: #000;
 }
@@ -1901,7 +1900,6 @@ input:checked + .slider:before {
 .carousel-img {
     width: 100%;
     height: 100%;
-    min-height: 350px;
     object-fit: cover;
     flex-shrink: 0;
 }
@@ -2100,9 +2098,9 @@ body.light-theme {
     --accent-dark: #816514;
     --accent-glow: rgba(184, 149, 43, 0.08);
     
-    --text-primary: #1c1c1f;
-    --text-secondary: #5c5c64;
-    --text-muted: #8c8c96;
+    --text-primary: #000000;
+    --text-secondary: #000000;
+    --text-muted: #000000;
     --white: #0a0a0c;
     
     --border-color: rgba(0, 0, 0, 0.08);
@@ -2185,6 +2183,24 @@ body.light-theme .form-control:focus {
 body.light-theme .cart-total-details {
     border-color: rgba(0, 0, 0, 0.08) !important;
 }
+
+/* Hacer textos más oscuros y legibles aumentando su grosor en tema claro */
+body.light-theme .section-subtitle {
+    font-weight: 500;
+}
+
+body.light-theme .footer-desc {
+    font-weight: 400;
+}
+
+body.light-theme .footer-links a {
+    font-weight: 500;
+}
+
+body.light-theme .footer-bottom {
+    font-weight: 500;
+}
+
 
 
 /* ==========================================================================
@@ -2516,5 +2532,105 @@ body.light-theme .size-guide-img {
         border-radius: 12px;
     }
 }
+
+/* Botón Flotante de WhatsApp */
+.whatsapp-float {
+    position: fixed;
+    width: 60px;
+    height: 60px;
+    bottom: 30px;
+    right: 30px;
+    background-color: #25d366;
+    color: #ffffff !important;
+    border-radius: 50%;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    animation: pulse-whatsapp 2s infinite;
+}
+
+.whatsapp-float:hover {
+    background-color: #20ba5a;
+    transform: scale(1.1) translateY(-3px);
+    box-shadow: 0 6px 16px rgba(37, 211, 102, 0.4);
+    color: #ffffff !important;
+}
+
+@keyframes pulse-whatsapp {
+    0% {
+        box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 15px rgba(37, 211, 102, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
+    }
+}
+
+/* Optimización de grilla de productos para móviles (2 columnas) */
+@media (max-width: 576px) {
+    .products-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        padding: 0 4px;
+    }
+    
+    .product-card {
+        border-radius: 12px;
+    }
+    
+    .product-card-body {
+        padding: 10px;
+    }
+    
+    .product-card-cat {
+        font-size: 0.65rem;
+        margin-bottom: 2px;
+    }
+    
+    .product-card-title {
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+        -webkit-line-clamp: 1;
+    }
+    
+    .product-card-desc {
+        display: none; /* Ocultar la descripción larga para mantener el diseño compacto y limpio en móvil */
+    }
+    
+    .product-card-bottom {
+        padding-top: 8px;
+        margin-top: 4px;
+    }
+    
+    .product-card-price {
+        font-size: 1.05rem;
+    }
+    
+    .btn-card-add {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .card-badges {
+        top: 8px;
+        left: 8px;
+        gap: 4px;
+    }
+    
+    .badge-limited,
+    .badge-outofstock,
+    .badge-urgency {
+        font-size: 0.55rem;
+        padding: 4px 8px;
+    }
+}
+
+
 
 

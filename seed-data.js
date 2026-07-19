@@ -69,7 +69,7 @@ const initialProducts = [
 
 const initialConfig = {
     storeName: "Curvys.Store by Moni",
-    whatsapp: "5491133224455", // Teléfono de prueba para WhatsApp
+    whatsapp: "5491150158665", // Teléfono de prueba para WhatsApp
     instagram: "https://www.instagram.com/curvys.store_by_moni",
     shippingText: "Envíos a todo el país",
     bannerText: "✨ ¡Envíos gratis a todo el país en compras mayores a $50.000! 🚚✨",

@@ -347,6 +347,7 @@ function registerEventListeners() {
         DOM.passwordChangeForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             
+            const currentPwd = document.getElementById("pwd-current").value;
             const newPwd = document.getElementById("pwd-new").value;
             const confirmPwd = document.getElementById("pwd-confirm").value;
             const submitBtn = DOM.passwordChangeForm.querySelector("button[type='submit']");
@@ -359,7 +360,7 @@ function registerEventListeners() {
             try {
                 submitBtn.disabled = true;
                 submitBtn.textContent = "Actualizando...";
-                await FirebaseService.changePassword(newPwd);
+                await FirebaseService.changePassword(currentPwd, newPwd);
                 showToast("🔑 Contraseña actualizada. Cerrando sesión...");
                 
                 // Forzar logout seguro
@@ -489,10 +490,10 @@ function renderProductsTable() {
             
         tr.innerHTML = `
             <td>
-                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=50'}" class="admin-table-img" style="width: 50px; height: 50px; object-fit: cover;" alt="${product.name}">
+                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=50'}" class="admin-table-img" style="width: 50px; height: 50px; object-fit: cover;" alt="${escapeHTML(product.name)}">
             </td>
-            <td style="font-weight: 600; color: var(--white);">${product.name}</td>
-            <td>${product.category}</td>
+            <td style="font-weight: 600; color: var(--white);">${escapeHTML(product.name)}</td>
+            <td>${escapeHTML(product.category)}</td>
             <td style="font-weight: 600;">$${product.price.toLocaleString('es-AR')}</td>
             <td>${tallesStr}</td>
             <td>${stockBadge}</td>

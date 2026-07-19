@@ -1,5 +1,4 @@
-﻿
-================================================================================
+﻿================================================================================
 FILE: firebase-config.js
 ================================================================================
 // Configuración de Firebase para Curvys Store by Moni
@@ -41,44 +40,6 @@ try {
     console.error("❌ [Firebase] Error al inicializar Firebase:", error);
 }
 
-// Función auxiliar para comprimir imágenes en el cliente (reduce el tamaño para guardarlo en Firestore si falla Storage)
-function compressImageHelper(file, maxWidth = 800, maxHeight = 800, quality = 0.7) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement("canvas");
-                let width = img.width;
-                let height = img.height;
-
-                if (width > height) {
-                    if (width > maxWidth) {
-                        height = Math.round((height * maxWidth) / width);
-                        width = maxWidth;
-                    }
-                } else {
-                    if (height > maxHeight) {
-                        width = Math.round((width * maxHeight) / height);
-                        height = maxHeight;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext("2d");
-                ctx.drawImage(img, 0, 0, width, height);
-
-                const dataUrl = canvas.toDataURL("image/jpeg", quality);
-                resolve(dataUrl);
-            };
-            img.onerror = (err) => reject(err);
-        };
-        reader.onerror = (err) => reject(err);
-    });
-}
 
 // Función auxiliar para forzar un límite de tiempo en las promesas de Firestore
 function withTimeout(promise, timeoutMs = 5000) {
@@ -114,13 +75,19 @@ const FirebaseService = {
         return await auth.signInWithEmailAndPassword(email, password);
     },
 
-    async changePassword(newPassword) {
+    async changePassword(currentPassword, newPassword) {
         if (!isFirebaseActive) {
             localStorage.setItem("curvys_admin_password_sandbox", newPassword);
             return;
         }
         const user = firebase.auth().currentUser;
         if (user) {
+            const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
+            try {
+                await user.reauthenticateWithCredential(credential);
+            } catch (err) {
+                throw new Error("La contraseña actual es incorrecta.");
+            }
             return await user.updatePassword(newPassword);
         } else {
             throw new Error("No hay un usuario autenticado activo.");
@@ -363,24 +330,13 @@ const FirebaseService = {
     async getConfig() {
         if (!isFirebaseActive) {
             const local = localStorage.getItem("curvys_config");
-            const config = local ? JSON.parse(local) : null;
-            if (config && config.categories && !config.categories.includes("Camisas")) {
-                config.categories.push("Camisas");
-                localStorage.setItem("curvys_config", JSON.stringify(config));
-            }
-            return config;
+            return local ? JSON.parse(local) : null;
         }
         try {
             console.log("[Firebase] Obteniendo configuraciones de Firestore...");
             const doc = await withTimeout(db.collection("settings").doc("main").get());
             if (doc.exists) {
-                const config = doc.data();
-                if (config && config.categories && !config.categories.includes("Camisas")) {
-                    config.categories.push("Camisas");
-                    await withTimeout(db.collection("settings").doc("main").set(config));
-                    console.log("🌱 [Firebase] Categoría 'Camisas' añadida automáticamente a las configuraciones.");
-                }
-                return config;
+                return doc.data();
             }
             return null;
         } catch (error) {
@@ -403,64 +359,41 @@ const FirebaseService = {
         }
     },
 
-    // --- SUBIDA DE IMÁGENES A FIREBASE STORAGE / SANDBOX ---
+    // --- SUBIDA DE IMÁGENES A CLOUDINARY ---
     async uploadImage(file) {
-        if (!isFirebaseActive) {
-            console.log("[Sandbox] Subiendo archivo localmente a base64...");
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = (err) => reject(err);
-                reader.readAsDataURL(file);
-            });
-        }
-        
         const isImage = file.type.startsWith("image/");
-        
+        if (!isImage) {
+            throw new Error("Por favor, selecciona un archivo de imagen válido.");
+        }
+
+        const CLOUD_NAME = "dgb5o9y0v";
+        const UPLOAD_PRESET = "curvys";
+        const FOLDER = "curvys/products";
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", UPLOAD_PRESET);
+        formData.append("folder", FOLDER);
+
         try {
-            console.log("[Firebase Storage] Intentando subir archivo a Firebase Storage...");
-            const storageRef = firebase.storage().ref();
-            const fileRef = storageRef.child(`products/${Date.now()}_${file.name}`);
-            
-            // Creamos una promesa de subida con un timeout de 4 segundos
-            const uploadPromise = (async () => {
-                const snapshot = await fileRef.put(file);
-                const downloadUrl = await snapshot.ref.getDownloadURL();
-                console.log("[Firebase Storage] Archivo subido exitosamente:", downloadUrl);
-                return downloadUrl;
-            })();
-            
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("timeout")), 4000)
+            console.log("[Cloudinary] Subiendo imagen...");
+            const response = await fetch(
+                `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+                { method: "POST", body: formData }
             );
-            
-            // Competimos el upload contra el timeout
-            return await Promise.race([uploadPromise, timeoutPromise]);
-            
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => null);
+                throw new Error(errData?.error?.message || "Error al subir la imagen a Cloudinary.");
+            }
+
+            const data = await response.json();
+            console.log("[Cloudinary] Imagen subida con éxito:", data.secure_url);
+            return data.secure_url;
+
         } catch (error) {
-            // Si el almacenamiento da error de permisos, cuota o excede el tiempo de espera (ej. Storage no habilitado)
-            if (isImage && (error.message === "timeout" || error.code === 'storage/unauthorized' || error.code === 'storage/retry-limit-exceeded' || error.code === 'storage/canceled')) {
-                console.warn("⚠️ [Firebase Storage] La subida a Storage falló o tardó demasiado. Usando compresión Base64 local como fallback...");
-                try {
-                    const base64Data = await compressImageHelper(file);
-                    return base64Data;
-                } catch (compressErr) {
-                    console.error("Error al comprimir imagen de respaldo:", compressErr);
-                }
-            }
-            
-            console.error("[Firebase Storage] Error al subir archivo:", error);
-            let friendlyMessage = "Error en el servidor de Firebase Storage.";
-            if (error.code === 'storage/unauthorized') {
-                friendlyMessage = "No autorizado. Verifica las Reglas de Seguridad en tu consola de Firebase Storage.";
-            } else if (error.code === 'storage/quota-exceeded') {
-                friendlyMessage = "Límite de cuota excedido. Puede que necesites actualizar al plan Blaze de Firebase.";
-            } else if (error.message && (error.message.includes('Blaze') || error.message.includes('plan'))) {
-                friendlyMessage = "Subida fallida: Firebase requiere el plan Blaze para habilitar Cloud Storage.";
-            } else if (error.message === "timeout") {
-                friendlyMessage = "El servidor de Storage no responde. Si el problema persiste, revisa si habilitaste Cloud Storage en tu consola de Firebase.";
-            }
-            throw new Error(friendlyMessage);
+            console.error("[Cloudinary] Error al subir imagen:", error);
+            throw new Error(error.message || "No se pudo subir la imagen. Verifica tu conexión.");
         }
     }
 };
@@ -552,7 +485,7 @@ const initialProducts = [
 
 const initialConfig = {
     storeName: "Curvys.Store by Moni",
-    whatsapp: "5491133224455", // Teléfono de prueba para WhatsApp
+    whatsapp: "5491150158665", // Teléfono de prueba para WhatsApp
     instagram: "https://www.instagram.com/curvys.store_by_moni",
     shippingText: "Envíos a todo el país",
     bannerText: "✨ ¡Envíos gratis a todo el país en compras mayores a $50.000! 🚚✨",
@@ -589,6 +522,16 @@ FILE: app.js
 ================================================================================
 // Main Client Script - Curvys Store by Moni
 
+function escapeHTML(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 // Variables de estado
 let products = [];
 let storeConfig = {};
@@ -600,7 +543,7 @@ let currentProductImages = [];
 let currentImageIndex = 0;
 
 // Variables de las nuevas características
-let currentTheme = "dark";
+let currentTheme = "light";
 let activeFavoritesFilter = false;
 let activeCoupon = null; // Almacenará { code: "CURVYS10", percent: 10 }
 let sizeGuideVisible = false;
@@ -676,7 +619,8 @@ const DOM = {
     footerAbout: document.getElementById("footer-about"),
     footerInsta: document.getElementById("footer-insta"),
     footerWhatsapp: document.getElementById("footer-whatsapp"),
-    instagramLink: document.getElementById("instagram-link")
+    instagramLink: document.getElementById("instagram-link"),
+    whatsappFloatBtn: document.getElementById("whatsapp-float-btn")
 };
 
 // Inicialización de la aplicación
@@ -743,6 +687,7 @@ function applyStoreConfig() {
     if (DOM.instagramLink) DOM.instagramLink.href = storeConfig.instagram || "#";
     if (DOM.footerInsta) DOM.footerInsta.href = storeConfig.instagram || "#";
     if (DOM.footerWhatsapp) DOM.footerWhatsapp.href = `https://wa.me/${storeConfig.whatsapp}`;
+    if (DOM.whatsappFloatBtn) DOM.whatsappFloatBtn.href = `https://wa.me/${storeConfig.whatsapp || "5491150158665"}`;
 }
 
 // Registrar Eventos de la Interfaz
@@ -1017,12 +962,12 @@ function renderProducts() {
                     </svg>
                 </button>
                 
-                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600'}" class="product-card-img" alt="${product.name}" loading="lazy">
+                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600'}" class="product-card-img" alt="${escapeHTML(product.name)}" loading="lazy">
             </div>
             <div class="product-card-body">
-                <span class="product-card-cat">${product.category}</span>
-                <h3 class="product-card-title">${product.name}</h3>
-                <p class="product-card-desc">${product.description}</p>
+                <span class="product-card-cat">${escapeHTML(product.category)}</span>
+                <h3 class="product-card-title">${escapeHTML(product.name)}</h3>
+                <p class="product-card-desc">${escapeHTML(product.description)}</p>
                 <div class="product-card-bottom">
                     <span class="product-card-price">$${product.price.toLocaleString('es-AR')}</span>
                     <button class="btn-card-add" ${!product.inStock ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''} title="Ver talles y agregar">
@@ -1509,7 +1454,7 @@ async function sendWhatsAppOrder() {
     }
 
     // Obtener teléfono de destino (eliminar caracteres raros)
-    const phone = (storeConfig.whatsapp || "5491133224455").replace(/[^0-9]/g, "");
+    const phone = (storeConfig.whatsapp || "5491150158665").replace(/[^0-9]/g, "");
     
     // Generar url de WhatsApp moderna
     const encodedText = encodeURIComponent(mensaje);
@@ -1566,30 +1511,15 @@ function showToast(message) {
 // NUEVAS FUNCIONALIDADES COMERCIALES Y VISUALES
 // ==========================================================================
 
-// 1. SISTEMA DE TEMAS (Sun/Moon Toggle)
+// 1. SISTEMA DE TEMAS (Siempre Claro)
 function initTheme() {
-    const savedTheme = localStorage.getItem("curvys_theme") || "dark";
-    setTheme(savedTheme);
+    setTheme("light");
 }
 
 function setTheme(theme) {
-    currentTheme = theme;
-    const toggleIcon = DOM.themeToggle ? DOM.themeToggle.querySelector("i") : null;
-    
-    if (theme === "light") {
-        document.body.classList.add("light-theme");
-        if (toggleIcon) {
-            toggleIcon.setAttribute("data-lucide", "sun");
-        }
-    } else {
-        document.body.classList.remove("light-theme");
-        if (toggleIcon) {
-            toggleIcon.setAttribute("data-lucide", "moon");
-        }
-    }
-    
-    localStorage.setItem("curvys_theme", theme);
-    if (window.lucide) window.lucide.createIcons();
+    currentTheme = "light";
+    document.body.classList.add("light-theme");
+    localStorage.setItem("curvys_theme", "light");
 }
 
 // 2. HERO SLIDER AUTOMÁTICO
@@ -2066,6 +1996,7 @@ function registerEventListeners() {
         DOM.passwordChangeForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             
+            const currentPwd = document.getElementById("pwd-current").value;
             const newPwd = document.getElementById("pwd-new").value;
             const confirmPwd = document.getElementById("pwd-confirm").value;
             const submitBtn = DOM.passwordChangeForm.querySelector("button[type='submit']");
@@ -2078,7 +2009,7 @@ function registerEventListeners() {
             try {
                 submitBtn.disabled = true;
                 submitBtn.textContent = "Actualizando...";
-                await FirebaseService.changePassword(newPwd);
+                await FirebaseService.changePassword(currentPwd, newPwd);
                 showToast("🔑 Contraseña actualizada. Cerrando sesión...");
                 
                 // Forzar logout seguro
@@ -2208,10 +2139,10 @@ function renderProductsTable() {
             
         tr.innerHTML = `
             <td>
-                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=50'}" class="admin-table-img" style="width: 50px; height: 50px; object-fit: cover;" alt="${product.name}">
+                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=50'}" class="admin-table-img" style="width: 50px; height: 50px; object-fit: cover;" alt="${escapeHTML(product.name)}">
             </td>
-            <td style="font-weight: 600; color: var(--white);">${product.name}</td>
-            <td>${product.category}</td>
+            <td style="font-weight: 600; color: var(--white);">${escapeHTML(product.name)}</td>
+            <td>${escapeHTML(product.category)}</td>
             <td style="font-weight: 600;">$${product.price.toLocaleString('es-AR')}</td>
             <td>${tallesStr}</td>
             <td>${stockBadge}</td>
@@ -3213,7 +3144,7 @@ FILE: index.html
     <!-- Lucide Icons para Iconografía Moderna -->
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body>
+<body class="light-theme">
 
 
     <!-- Encabezado / Header principal -->
@@ -3229,10 +3160,6 @@ FILE: index.html
             </nav>
             
             <div class="header-actions">
-                <!-- Botón de Tema Claro/Oscuro -->
-                <button class="cart-trigger" id="theme-toggle" title="Cambiar Tema" aria-label="Cambiar Tema">
-                    <i data-lucide="moon" style="width: 22px; height: 22px;"></i>
-                </button>
                 <!-- Botón al Panel Administrador -->
                 <a href="admin.html" class="cart-trigger" title="Panel Administrador" aria-label="Panel Administrador">
                     <i data-lucide="settings" style="width: 22px; height: 22px;"></i>
@@ -3246,28 +3173,24 @@ FILE: index.html
         </div>
     </header>
 
-    <!-- Sección Hero de Presentación -->
+    <!-- Sección Hero de Presentación (Estructura Split) -->
     <section class="hero" id="hero-slider-section">
-        <!-- Diapositivas de fondo animadas -->
-        <div class="hero-slides-container" id="hero-slides-container">
-            <div class="hero-slide active" style="background-image: url('https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1600')"></div>
-            <div class="hero-slide" style="background-image: url('https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=1600')"></div>
-            <div class="hero-slide" style="background-image: url('https://images.unsplash.com/photo-1490114538077-0a7f8cb49891?q=80&w=1600')"></div>
-        </div>
-        
-        <div class="container hero-content-container">
-            <span class="hero-subtitle">Boutique Exclusiva</span>
-            <h1 class="hero-title" id="hero-title">Curvys.Store by Moni</h1>
-            <p class="hero-desc" id="hero-desc">Indumentaria de diseño único. Confección a medida y de edición limitada.</p>
-            <div class="hero-buttons">
-                <a href="#catalogo" class="btn btn-primary">
-                    <i data-lucide="shopping-cart" style="width: 18px; height: 18px;"></i>
-                    Ver Catálogo
-                </a>
-                <a href="#" id="instagram-link" target="_blank" class="btn btn-secondary">
-                    <i data-lucide="instagram" style="width: 18px; height: 18px;"></i>
-                    Instagram
-                </a>
+        <div class="container hero-split-container">
+            <div class="hero-left-image">
+                <img src="modelo-camisa-blanca.png" alt="Curvys Store Hero">
+            </div>
+            <div class="hero-right-content">
+                <h1 class="hero-new-title">
+                    <span class="title-top">DISEÑADA PARA</span>
+                    <span class="title-bottom">acompañar tus curvas</span>
+                </h1>
+                <p class="hero-new-desc">
+                    Prendas confeccionadas a pedido, en pequeñas ediciones. Diseñadas para acompañarte todos los días.
+                </p>
+                <div class="hero-new-buttons">
+                    <a href="#catalogo" class="btn-hero-primary">VER COLECCION</a>
+                    <a href="#" id="instagram-link" target="_blank" class="btn-hero-secondary">Instagram</a>
+                </div>
             </div>
         </div>
     </section>
@@ -3545,10 +3468,10 @@ FILE: index.html
                 <h4 class="footer-title">Redes Sociales</h4>
                 <div class="social-links">
                     <a href="#" target="_blank" class="social-icon" id="footer-insta" aria-label="Instagram">
-                        <i data-lucide="instagram"></i>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-instagram"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
                     </a>
                     <a href="#" target="_blank" class="social-icon" id="footer-whatsapp" aria-label="WhatsApp">
-                        <i data-lucide="phone"></i>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-phone"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                     </a>
                 </div>
             </div>
@@ -3576,6 +3499,13 @@ FILE: index.html
     <script>
         lucide.createIcons();
     </script>
+
+    <!-- Botón Flotante de WhatsApp -->
+    <a href="https://wa.me/5491150158665" class="whatsapp-float" id="whatsapp-float-btn" target="_blank" aria-label="Contactar por WhatsApp">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="30" height="30" fill="currentColor">
+            <path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/>
+        </svg>
+    </a>
 </body>
 </html>
 
@@ -3858,6 +3788,10 @@ FILE: admin.html
                     
                     <form id="password-change-form" style="display: flex; flex-direction: column; gap: 20px; max-width: 600px;">
                         <div class="form-group">
+                            <label for="pwd-current">Contraseña Actual *</label>
+                            <input type="password" id="pwd-current" class="form-control" placeholder="Contraseña actual" required>
+                        </div>
+                        <div class="form-group">
                             <label for="pwd-new">Nueva Contraseña *</label>
                             <input type="password" id="pwd-new" class="form-control" placeholder="Nueva contraseña de administrador" minlength="6" required>
                         </div>
@@ -4075,7 +4009,6 @@ FILE: admin.html
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
 
     <!-- Scripts del Administrador -->
     <script src="firebase-config.js"></script>
@@ -4095,7 +4028,7 @@ FILE: admin.html
 FILE: style.css
 ================================================================================
 /* Global Stylesheet - Curvys Store by Moni */
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Montserrat:wght@300;400;500;600;700&family=Alex+Brush&display=swap');
 
 :root {
     --bg-primary: #0a0a0c;
@@ -4331,88 +4264,166 @@ nav {
     box-shadow: 0 0 10px rgba(212,175,55,0.4);
 }
 
-/* Hero Section */
+/* Hero Section Redesign: Split Layout */
 .hero {
     position: relative;
-    padding: 100px 0 80px;
-    text-align: center;
-    background: radial-gradient(circle at 50% 50%, rgba(212, 175, 55, 0.08) 0%, rgba(10, 10, 12, 0.6) 70%, #0a0a0c 100%),
-                linear-gradient(180deg, rgba(18, 18, 22, 0.5) 0%, #0a0a0c 100%);
+    padding: 40px 0;
+    background-color: var(--bg-card); /* Soft background adapting to theme */
     border-bottom: 1px solid var(--border-color);
     overflow: hidden;
+    text-align: left;
 }
 
 .hero::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-image: radial-gradient(rgba(212, 175, 55, 0.15) 1px, transparent 1px);
-    background-size: 40px 40px;
-    opacity: 0.25;
-    pointer-events: none;
-    z-index: 0;
+    display: none;
 }
 
-.hero-subtitle {
-    font-size: 0.9rem;
-    letter-spacing: 0.35em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 25px;
-    font-weight: 500;
-    display: inline-block;
-    position: relative;
-    z-index: 1;
+.hero-split-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 40px;
+    align-items: center;
 }
 
-.hero-subtitle::after {
-    content: '';
-    position: absolute;
-    bottom: -10px;
-    left: 15%;
-    width: 70%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-}
-
-.hero-title {
-    font-family: var(--font-serif);
-    font-size: 4.5rem;
-    font-weight: 500;
-    margin-bottom: 20px;
-    letter-spacing: 0.15em;
-    color: var(--white);
-    position: relative;
-    z-index: 1;
-    text-shadow: 0 4px 20px rgba(0,0,0,0.6);
-}
-
-@media (max-width: 768px) {
-    .hero-title {
-        font-size: 2.8rem;
-        letter-spacing: 0.1em;
+@media (min-width: 768px) {
+    .hero-split-container {
+        grid-template-columns: 1fr 1.1fr;
+        gap: 60px;
     }
 }
 
-.hero-desc {
-    font-size: 1.15rem;
-    color: var(--text-secondary);
-    max-width: 650px;
-    margin: 0 auto 35px;
-    font-weight: 300;
-    position: relative;
-    z-index: 1;
+.hero-left-image {
+    width: 100%;
+    max-width: 380px;
+    aspect-ratio: 4 / 5;
+    margin: 0 auto;
+    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: var(--shadow-md);
 }
 
-.hero-buttons {
+.hero-left-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+    transition: transform 0.8s ease;
+}
+
+.hero-right-content {
     display: flex;
-    justify-content: center;
-    gap: 20px;
-    position: relative;
-    z-index: 1;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.hero-new-title {
+    margin-bottom: 25px;
+    width: 100%;
+}
+
+.hero-new-title .title-top {
+    display: block;
+    font-family: var(--font-serif);
+    font-size: 3rem;
+    font-weight: 300;
+    letter-spacing: 0.2em;
+    color: var(--text-primary);
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+    .hero-new-title .title-top {
+        font-size: 2.2rem;
+        letter-spacing: 0.15em;
+    }
+}
+
+.hero-new-title .title-bottom {
+    display: block;
+    font-family: 'Alex Brush', cursive;
+    font-size: 3.8rem;
+    color: var(--text-primary);
+    line-height: 1;
+    margin-top: 5px;
+    font-weight: 400;
+}
+
+@media (max-width: 768px) {
+    .hero-new-title .title-bottom {
+        font-size: 3rem;
+    }
+}
+
+.hero-new-desc {
+    font-family: var(--font-sans);
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.8;
+    color: var(--text-primary);
+    margin-bottom: 35px;
+    max-width: 480px;
+}
+
+.hero-new-buttons {
+    display: flex;
+    gap: 15px;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.btn-hero-primary {
+    display: inline-block;
+    background-color: var(--white);
+    color: var(--bg-primary);
+    padding: 14px 40px;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    text-align: center;
+    border-radius: 4px;
+}
+
+body.light-theme .btn-hero-primary {
+    background-color: #000000;
+    color: #ffffff;
+}
+
+.btn-hero-primary:hover {
+    background-color: var(--accent);
+    color: #ffffff;
+    box-shadow: 0 5px 15px rgba(184, 149, 43, 0.3);
+    transform: translateY(-2px);
+}
+
+.btn-hero-secondary {
+    display: inline-block;
+    background-color: transparent;
+    color: var(--text-primary);
+    padding: 14px 40px;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    border: 2px solid var(--text-primary);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    text-align: center;
+    border-radius: 4px;
+}
+
+.btn-hero-secondary:hover {
+    background-color: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-2px);
 }
 
 .btn {
@@ -5899,10 +5910,11 @@ input:checked + .slider:before {
    ========================================================================== */
 
 .carousel-container {
-    position: relative;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    min-height: 350px;
     overflow: hidden;
     background: #000;
 }
@@ -5917,7 +5929,6 @@ input:checked + .slider:before {
 .carousel-img {
     width: 100%;
     height: 100%;
-    min-height: 350px;
     object-fit: cover;
     flex-shrink: 0;
 }
@@ -6116,9 +6127,9 @@ body.light-theme {
     --accent-dark: #816514;
     --accent-glow: rgba(184, 149, 43, 0.08);
     
-    --text-primary: #1c1c1f;
-    --text-secondary: #5c5c64;
-    --text-muted: #8c8c96;
+    --text-primary: #000000;
+    --text-secondary: #000000;
+    --text-muted: #000000;
     --white: #0a0a0c;
     
     --border-color: rgba(0, 0, 0, 0.08);
@@ -6202,6 +6213,24 @@ body.light-theme .cart-total-details {
     border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
+/* Hacer textos más oscuros y legibles aumentando su grosor en tema claro */
+body.light-theme .section-subtitle {
+    font-weight: 500;
+}
+
+body.light-theme .footer-desc {
+    font-weight: 400;
+}
+
+body.light-theme .footer-links a {
+    font-weight: 500;
+}
+
+body.light-theme .footer-bottom {
+    font-weight: 500;
+}
+
+
 
 /* ==========================================================================
    NUEVOS ESTILOS: HERO SLIDER CON DESVANECIMIENTO DINÁMICO
@@ -6231,14 +6260,16 @@ body.light-theme .cart-total-details {
     background-position: center;
     opacity: 0;
     transition: opacity 1.5s ease-in-out;
+    filter: blur(8px);
+    transform: scale(1.05);
 }
 
 .hero-slide.active {
-    opacity: 0.25;
+    opacity: 0.35;
 }
 
 body.light-theme .hero-slide.active {
-    opacity: 0.1;
+    opacity: 0.25;
 }
 
 .hero-content-container {
@@ -6530,5 +6561,107 @@ body.light-theme .size-guide-img {
         border-radius: 12px;
     }
 }
+
+/* Botón Flotante de WhatsApp */
+.whatsapp-float {
+    position: fixed;
+    width: 60px;
+    height: 60px;
+    bottom: 30px;
+    right: 30px;
+    background-color: #25d366;
+    color: #ffffff !important;
+    border-radius: 50%;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    animation: pulse-whatsapp 2s infinite;
+}
+
+.whatsapp-float:hover {
+    background-color: #20ba5a;
+    transform: scale(1.1) translateY(-3px);
+    box-shadow: 0 6px 16px rgba(37, 211, 102, 0.4);
+    color: #ffffff !important;
+}
+
+@keyframes pulse-whatsapp {
+    0% {
+        box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 15px rgba(37, 211, 102, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
+    }
+}
+
+/* Optimización de grilla de productos para móviles (2 columnas) */
+@media (max-width: 576px) {
+    .products-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        padding: 0 4px;
+    }
+    
+    .product-card {
+        border-radius: 12px;
+    }
+    
+    .product-card-body {
+        padding: 10px;
+    }
+    
+    .product-card-cat {
+        font-size: 0.65rem;
+        margin-bottom: 2px;
+    }
+    
+    .product-card-title {
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+        -webkit-line-clamp: 1;
+    }
+    
+    .product-card-desc {
+        display: none; /* Ocultar la descripción larga para mantener el diseño compacto y limpio en móvil */
+    }
+    
+    .product-card-bottom {
+        padding-top: 8px;
+        margin-top: 4px;
+    }
+    
+    .product-card-price {
+        font-size: 1.05rem;
+    }
+    
+    .btn-card-add {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .card-badges {
+        top: 8px;
+        left: 8px;
+        gap: 4px;
+    }
+    
+    .badge-limited,
+    .badge-outofstock,
+    .badge-urgency {
+        font-size: 0.55rem;
+        padding: 4px 8px;
+    }
+}
+
+
+
+
 
 

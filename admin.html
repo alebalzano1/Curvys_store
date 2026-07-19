@@ -273,6 +273,10 @@
                     
                     <form id="password-change-form" style="display: flex; flex-direction: column; gap: 20px; max-width: 600px;">
                         <div class="form-group">
+                            <label for="pwd-current">Contraseña Actual *</label>
+                            <input type="password" id="pwd-current" class="form-control" placeholder="Contraseña actual" required>
+                        </div>
+                        <div class="form-group">
                             <label for="pwd-new">Nueva Contraseña *</label>
                             <input type="password" id="pwd-new" class="form-control" placeholder="Nueva contraseña de administrador" minlength="6" required>
                         </div>
@@ -490,7 +494,6 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
 
     <!-- Scripts del Administrador -->
     <script src="firebase-config.js"></script>

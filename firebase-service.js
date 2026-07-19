@@ -19,44 +19,6 @@ try {
     console.error("❌ [Firebase] Error al inicializar Firebase:", error);
 }
 
-// Función auxiliar para comprimir imágenes en el cliente (reduce el tamaño para guardarlo en Firestore si falla Storage)
-function compressImageHelper(file, maxWidth = 800, maxHeight = 800, quality = 0.7) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement("canvas");
-                let width = img.width;
-                let height = img.height;
-
-                if (width > height) {
-                    if (width > maxWidth) {
-                        height = Math.round((height * maxWidth) / width);
-                        width = maxWidth;
-                    }
-                } else {
-                    if (height > maxHeight) {
-                        width = Math.round((width * maxHeight) / height);
-                        height = maxHeight;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext("2d");
-                ctx.drawImage(img, 0, 0, width, height);
-
-                const dataUrl = canvas.toDataURL("image/jpeg", quality);
-                resolve(dataUrl);
-            };
-            img.onerror = (err) => reject(err);
-        };
-        reader.onerror = (err) => reject(err);
-    });
-}
 
 // Función auxiliar para forzar un límite de tiempo en las promesas de Firestore
 function withTimeout(promise, timeoutMs = 5000) {
@@ -92,13 +54,19 @@ const FirebaseService = {
         return await auth.signInWithEmailAndPassword(email, password);
     },
 
-    async changePassword(newPassword) {
+    async changePassword(currentPassword, newPassword) {
         if (!isFirebaseActive) {
             localStorage.setItem("curvys_admin_password_sandbox", newPassword);
             return;
         }
         const user = firebase.auth().currentUser;
         if (user) {
+            const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
+            try {
+                await user.reauthenticateWithCredential(credential);
+            } catch (err) {
+                throw new Error("La contraseña actual es incorrecta.");
+            }
             return await user.updatePassword(newPassword);
         } else {
             throw new Error("No hay un usuario autenticado activo.");
@@ -341,24 +309,13 @@ const FirebaseService = {
     async getConfig() {
         if (!isFirebaseActive) {
             const local = localStorage.getItem("curvys_config");
-            const config = local ? JSON.parse(local) : null;
-            if (config && config.categories && !config.categories.includes("Camisas")) {
-                config.categories.push("Camisas");
-                localStorage.setItem("curvys_config", JSON.stringify(config));
-            }
-            return config;
+            return local ? JSON.parse(local) : null;
         }
         try {
             console.log("[Firebase] Obteniendo configuraciones de Firestore...");
             const doc = await withTimeout(db.collection("settings").doc("main").get());
             if (doc.exists) {
-                const config = doc.data();
-                if (config && config.categories && !config.categories.includes("Camisas")) {
-                    config.categories.push("Camisas");
-                    await withTimeout(db.collection("settings").doc("main").set(config));
-                    console.log("🌱 [Firebase] Categoría 'Camisas' añadida automáticamente a las configuraciones.");
-                }
-                return config;
+                return doc.data();
             }
             return null;
         } catch (error) {
@@ -381,64 +338,41 @@ const FirebaseService = {
         }
     },
 
-    // --- SUBIDA DE IMÁGENES A FIREBASE STORAGE / SANDBOX ---
+    // --- SUBIDA DE IMÁGENES A CLOUDINARY ---
     async uploadImage(file) {
-        if (!isFirebaseActive) {
-            console.log("[Sandbox] Subiendo archivo localmente a base64...");
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = (err) => reject(err);
-                reader.readAsDataURL(file);
-            });
-        }
-        
         const isImage = file.type.startsWith("image/");
-        
+        if (!isImage) {
+            throw new Error("Por favor, selecciona un archivo de imagen válido.");
+        }
+
+        const CLOUD_NAME = "dgb5o9y0v";
+        const UPLOAD_PRESET = "curvys";
+        const FOLDER = "curvys/products";
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", UPLOAD_PRESET);
+        formData.append("folder", FOLDER);
+
         try {
-            console.log("[Firebase Storage] Intentando subir archivo a Firebase Storage...");
-            const storageRef = firebase.storage().ref();
-            const fileRef = storageRef.child(`products/${Date.now()}_${file.name}`);
-            
-            // Creamos una promesa de subida con un timeout de 4 segundos
-            const uploadPromise = (async () => {
-                const snapshot = await fileRef.put(file);
-                const downloadUrl = await snapshot.ref.getDownloadURL();
-                console.log("[Firebase Storage] Archivo subido exitosamente:", downloadUrl);
-                return downloadUrl;
-            })();
-            
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("timeout")), 4000)
+            console.log("[Cloudinary] Subiendo imagen...");
+            const response = await fetch(
+                `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+                { method: "POST", body: formData }
             );
-            
-            // Competimos el upload contra el timeout
-            return await Promise.race([uploadPromise, timeoutPromise]);
-            
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => null);
+                throw new Error(errData?.error?.message || "Error al subir la imagen a Cloudinary.");
+            }
+
+            const data = await response.json();
+            console.log("[Cloudinary] Imagen subida con éxito:", data.secure_url);
+            return data.secure_url;
+
         } catch (error) {
-            // Si el almacenamiento da error de permisos, cuota o excede el tiempo de espera (ej. Storage no habilitado)
-            if (isImage && (error.message === "timeout" || error.code === 'storage/unauthorized' || error.code === 'storage/retry-limit-exceeded' || error.code === 'storage/canceled')) {
-                console.warn("⚠️ [Firebase Storage] La subida a Storage falló o tardó demasiado. Usando compresión Base64 local como fallback...");
-                try {
-                    const base64Data = await compressImageHelper(file);
-                    return base64Data;
-                } catch (compressErr) {
-                    console.error("Error al comprimir imagen de respaldo:", compressErr);
-                }
-            }
-            
-            console.error("[Firebase Storage] Error al subir archivo:", error);
-            let friendlyMessage = "Error en el servidor de Firebase Storage.";
-            if (error.code === 'storage/unauthorized') {
-                friendlyMessage = "No autorizado. Verifica las Reglas de Seguridad en tu consola de Firebase Storage.";
-            } else if (error.code === 'storage/quota-exceeded') {
-                friendlyMessage = "Límite de cuota excedido. Puede que necesites actualizar al plan Blaze de Firebase.";
-            } else if (error.message && (error.message.includes('Blaze') || error.message.includes('plan'))) {
-                friendlyMessage = "Subida fallida: Firebase requiere el plan Blaze para habilitar Cloud Storage.";
-            } else if (error.message === "timeout") {
-                friendlyMessage = "El servidor de Storage no responde. Si el problema persiste, revisa si habilitaste Cloud Storage en tu consola de Firebase.";
-            }
-            throw new Error(friendlyMessage);
+            console.error("[Cloudinary] Error al subir imagen:", error);
+            throw new Error(error.message || "No se pudo subir la imagen. Verifica tu conexión.");
         }
     }
 };

@@ -1,5 +1,15 @@
 // Main Client Script - Curvys Store by Moni
 
+function escapeHTML(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 // Variables de estado
 let products = [];
 let storeConfig = {};
@@ -11,7 +21,7 @@ let currentProductImages = [];
 let currentImageIndex = 0;
 
 // Variables de las nuevas características
-let currentTheme = "dark";
+let currentTheme = "light";
 let activeFavoritesFilter = false;
 let activeCoupon = null; // Almacenará { code: "CURVYS10", percent: 10 }
 let sizeGuideVisible = false;
@@ -87,7 +97,8 @@ const DOM = {
     footerAbout: document.getElementById("footer-about"),
     footerInsta: document.getElementById("footer-insta"),
     footerWhatsapp: document.getElementById("footer-whatsapp"),
-    instagramLink: document.getElementById("instagram-link")
+    instagramLink: document.getElementById("instagram-link"),
+    whatsappFloatBtn: document.getElementById("whatsapp-float-btn")
 };
 
 // Inicialización de la aplicación
@@ -154,6 +165,7 @@ function applyStoreConfig() {
     if (DOM.instagramLink) DOM.instagramLink.href = storeConfig.instagram || "#";
     if (DOM.footerInsta) DOM.footerInsta.href = storeConfig.instagram || "#";
     if (DOM.footerWhatsapp) DOM.footerWhatsapp.href = `https://wa.me/${storeConfig.whatsapp}`;
+    if (DOM.whatsappFloatBtn) DOM.whatsappFloatBtn.href = `https://wa.me/${storeConfig.whatsapp || "5491150158665"}`;
 }
 
 // Registrar Eventos de la Interfaz
@@ -428,12 +440,12 @@ function renderProducts() {
                     </svg>
                 </button>
                 
-                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600'}" class="product-card-img" alt="${product.name}" loading="lazy">
+                <img src="${product.image || 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600'}" class="product-card-img" alt="${escapeHTML(product.name)}" loading="lazy">
             </div>
             <div class="product-card-body">
-                <span class="product-card-cat">${product.category}</span>
-                <h3 class="product-card-title">${product.name}</h3>
-                <p class="product-card-desc">${product.description}</p>
+                <span class="product-card-cat">${escapeHTML(product.category)}</span>
+                <h3 class="product-card-title">${escapeHTML(product.name)}</h3>
+                <p class="product-card-desc">${escapeHTML(product.description)}</p>
                 <div class="product-card-bottom">
                     <span class="product-card-price">$${product.price.toLocaleString('es-AR')}</span>
                     <button class="btn-card-add" ${!product.inStock ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''} title="Ver talles y agregar">
@@ -920,7 +932,7 @@ async function sendWhatsAppOrder() {
     }
 
     // Obtener teléfono de destino (eliminar caracteres raros)
-    const phone = (storeConfig.whatsapp || "5491133224455").replace(/[^0-9]/g, "");
+    const phone = (storeConfig.whatsapp || "5491150158665").replace(/[^0-9]/g, "");
     
     // Generar url de WhatsApp moderna
     const encodedText = encodeURIComponent(mensaje);
@@ -977,30 +989,15 @@ function showToast(message) {
 // NUEVAS FUNCIONALIDADES COMERCIALES Y VISUALES
 // ==========================================================================
 
-// 1. SISTEMA DE TEMAS (Sun/Moon Toggle)
+// 1. SISTEMA DE TEMAS (Siempre Claro)
 function initTheme() {
-    const savedTheme = localStorage.getItem("curvys_theme") || "dark";
-    setTheme(savedTheme);
+    setTheme("light");
 }
 
 function setTheme(theme) {
-    currentTheme = theme;
-    const toggleIcon = DOM.themeToggle ? DOM.themeToggle.querySelector("i") : null;
-    
-    if (theme === "light") {
-        document.body.classList.add("light-theme");
-        if (toggleIcon) {
-            toggleIcon.setAttribute("data-lucide", "sun");
-        }
-    } else {
-        document.body.classList.remove("light-theme");
-        if (toggleIcon) {
-            toggleIcon.setAttribute("data-lucide", "moon");
-        }
-    }
-    
-    localStorage.setItem("curvys_theme", theme);
-    if (window.lucide) window.lucide.createIcons();
+    currentTheme = "light";
+    document.body.classList.add("light-theme");
+    localStorage.setItem("curvys_theme", "light");
 }
 
 // 2. HERO SLIDER AUTOMÁTICO
