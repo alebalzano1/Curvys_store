@@ -275,31 +275,6 @@ function registerEventListeners() {
         });
     }
 
-    // Aplicar Cupón
-    if (DOM.btnApplyCoupon) {
-        DOM.btnApplyCoupon.addEventListener("click", () => {
-            const code = DOM.couponInput.value.trim().toUpperCase();
-            if (!code) {
-                activeCoupon = null;
-                DOM.couponMessage.textContent = "";
-                updateCartUI();
-                return;
-            }
-            
-            const coupons = storeConfig.coupons || {};
-            if (coupons[code] !== undefined) {
-                activeCoupon = { code: code, percent: coupons[code] };
-                DOM.couponMessage.textContent = `✓ ¡Cupón ${code} aplicado! (${coupons[code]}% OFF)`;
-                DOM.couponMessage.style.color = "#10b981";
-                showToast(`🎟️ Cupón aplicado: ${coupons[code]}% de descuento`);
-            } else {
-                activeCoupon = null;
-                DOM.couponMessage.textContent = "✗ Código de cupón inválido";
-                DOM.couponMessage.style.color = "#ef4444";
-            }
-            updateCartUI();
-        });
-    }
 
     // Cambios en Método de Entrega
     const shippingSelect = document.getElementById("client-shipping");
@@ -511,6 +486,7 @@ function renderProducts() {
 function openProductModal(product) {
     if (!product) return;
     
+    selectedSize = ""; // Resetear talle seleccionado
     DOM.modalCat.textContent = product.category;
     DOM.modalTitle.textContent = product.name;
     DOM.modalPrice.textContent = `$${product.price.toLocaleString('es-AR')}`;
@@ -631,11 +607,8 @@ function openProductModal(product) {
             });
             DOM.modalSizes.appendChild(chip);
         });
-        
-        // Seleccionar automáticamente el primero
-        if (DOM.modalSizes.firstChild) {
-            DOM.modalSizes.firstChild.click();
-        }
+        // No auto-seleccionar para obligar a elegir talle
+
     } else {
         DOM.modalSizes.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">Talle único</p>`;
         selectedSize = "Único";

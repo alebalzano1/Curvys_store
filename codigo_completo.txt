@@ -800,31 +800,6 @@ function registerEventListeners() {
         });
     }
 
-    // Aplicar Cupón
-    if (DOM.btnApplyCoupon) {
-        DOM.btnApplyCoupon.addEventListener("click", () => {
-            const code = DOM.couponInput.value.trim().toUpperCase();
-            if (!code) {
-                activeCoupon = null;
-                DOM.couponMessage.textContent = "";
-                updateCartUI();
-                return;
-            }
-            
-            const coupons = storeConfig.coupons || {};
-            if (coupons[code] !== undefined) {
-                activeCoupon = { code: code, percent: coupons[code] };
-                DOM.couponMessage.textContent = `✓ ¡Cupón ${code} aplicado! (${coupons[code]}% OFF)`;
-                DOM.couponMessage.style.color = "#10b981";
-                showToast(`🎟️ Cupón aplicado: ${coupons[code]}% de descuento`);
-            } else {
-                activeCoupon = null;
-                DOM.couponMessage.textContent = "✗ Código de cupón inválido";
-                DOM.couponMessage.style.color = "#ef4444";
-            }
-            updateCartUI();
-        });
-    }
 
     // Cambios en Método de Entrega
     const shippingSelect = document.getElementById("client-shipping");
@@ -1036,6 +1011,7 @@ function renderProducts() {
 function openProductModal(product) {
     if (!product) return;
     
+    selectedSize = ""; // Resetear talle seleccionado
     DOM.modalCat.textContent = product.category;
     DOM.modalTitle.textContent = product.name;
     DOM.modalPrice.textContent = `$${product.price.toLocaleString('es-AR')}`;
@@ -1156,11 +1132,8 @@ function openProductModal(product) {
             });
             DOM.modalSizes.appendChild(chip);
         });
-        
-        // Seleccionar automáticamente el primero
-        if (DOM.modalSizes.firstChild) {
-            DOM.modalSizes.firstChild.click();
-        }
+        // No auto-seleccionar para obligar a elegir talle
+
     } else {
         DOM.modalSizes.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted);">Talle único</p>`;
         selectedSize = "Único";
@@ -3391,10 +3364,6 @@ FILE: index.html
                             <span>Subtotal prendas:</span>
                             <span id="cart-subtotal">$0</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between; color: #ef4444; display: none;" id="cart-discount-row">
-                            <span>Descuento (<span id="cart-discount-percent">0</span>%):</span>
-                            <span id="cart-discount-val">-$0</span>
-                        </div>
                         <div style="display: flex; justify-content: space-between;">
                             <span>Costo de envío:</span>
                             <span id="cart-shipping-val">$0</span>
@@ -3430,15 +3399,6 @@ FILE: index.html
                             <input type="text" id="client-address" class="form-control" placeholder="Dirección, Localidad, CP">
                         </div>
     
-                        <!-- Campo de Cupón de Descuento -->
-                        <div class="form-group">
-                            <label for="coupon-input">Cupón de Descuento</label>
-                            <div style="display: flex; gap: 8px;">
-                                <input type="text" id="coupon-input" class="form-control" style="text-transform: uppercase;" placeholder="Ej. CURVYS10">
-                                <button type="button" id="btn-apply-coupon" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; border-color: var(--border-color); white-space: nowrap;">Aplicar</button>
-                            </div>
-                            <span class="form-help" id="coupon-message" style="font-size: 0.7rem; display: block; margin-top: 4px;"></span>
-                        </div>
                         
                         <div class="form-group">
                             <label for="client-notes">Notas / Talle personalizado</label>
