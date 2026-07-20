@@ -638,6 +638,17 @@ async function initApp() {
         // Registrar Event Listeners de inmediato para que la UI responda rápido
         registerEventListeners();
 
+        // Mostrar spinner de carga elegante mientras se obtienen datos de Firebase
+        const grid = document.getElementById("products-grid");
+        if (grid) {
+            grid.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 60px 0; color: var(--text-secondary);">
+                    <div class="loading-spinner" style="margin: 0 auto 15px auto;"></div>
+                    <p style="font-family: var(--font-serif); font-size: 1.1rem; letter-spacing: 0.1em; color: var(--text-primary);">Cargando colección...</p>
+                </div>
+            `;
+        }
+
         // Obtener datos del servicio de base de datos
         products = await FirebaseService.getProducts();
         storeConfig = await FirebaseService.getConfig();
@@ -3232,6 +3243,12 @@ FILE: index.html
                 </div>
             </div>
         </div>
+        <!-- Indicador de Scroll en Móviles -->
+        <div class="scroll-indicator mobile-only">
+            <a href="#catalogo" aria-label="Desplazarse al catálogo">
+                <i data-lucide="chevron-down" style="width: 20px; height: 20px;"></i>
+            </a>
+        </div>
     </section>
 
     <!-- Barra de Filtros y Búsqueda de Productos -->
@@ -3571,8 +3588,6 @@ FILE: admin.html
     
     <!-- Hojas de estilo -->
     <link rel="stylesheet" href="style.css">
-    
-    <!-- Favicon -->
     <link rel="icon" type="image/png" href="logo.png">
     
     <!-- Lucide Icons -->
@@ -3862,7 +3877,7 @@ FILE: admin.html
                 <!-- Configuración de Envíos y Cupones -->
                 <div class="admin-card">
                     <div class="admin-card-title">
-                        <h2>Configuración Comercial (Envíos y Cupones)</h2>
+                        <h2>Configuración Comercial (Tarifas de Envío)</h2>
                     </div>
                     
                     <form id="shipping-rates-form" style="display: flex; flex-direction: column; gap: 20px; margin-bottom: 30px;">
@@ -3887,41 +3902,6 @@ FILE: admin.html
                         </button>
                     </form>
 
-                    <div style="border-top: 1px dashed var(--border-color); padding-top: 20px;">
-                        <h3 style="font-size: 1rem; color: var(--accent); margin-bottom: 10px;">Gestor de Cupones</h3>
-                        
-                        <!-- Formulario para agregar cupón -->
-                        <form id="add-coupon-form" style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap;">
-                            <div class="form-group" style="margin-bottom: 0; min-width: 180px;">
-                                <label for="new-coupon-code" style="font-size: 0.75rem;">Código del Cupón</label>
-                                <input type="text" id="new-coupon-code" class="form-control" style="text-transform: uppercase; padding: 6px 12px; font-size: 0.85rem;" placeholder="Ej. LIQUIDACION" required>
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0; min-width: 120px;">
-                                <label for="new-coupon-pct" style="font-size: 0.75rem;">Descuento (%)</label>
-                                <input type="number" id="new-coupon-pct" class="form-control" style="padding: 6px 12px; font-size: 0.85rem;" placeholder="15" min="1" max="100" required>
-                            </div>
-                            <button type="submit" class="btn btn-primary" style="padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; height: 35px;">
-                                <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
-                                Crear Cupón
-                            </button>
-                        </form>
-
-                        <!-- Tabla de cupones -->
-                        <div class="table-responsive">
-                            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;" id="coupons-table">
-                                <thead>
-                                    <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-secondary);">
-                                        <th style="padding: 8px;">Código</th>
-                                        <th style="padding: 8px;">Descuento</th>
-                                        <th style="padding: 8px; text-align: right;">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="coupons-list-body">
-                                    <!-- Se puebla dinámicamente -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Ajustes de base de datos / Mantenimiento -->
@@ -6943,4 +6923,68 @@ body.light-theme .size-guide-img {
 
 .mobile-nav-link.adm-link:hover {
     color: var(--accent);
+}
+
+/* ==========================================================================
+   ESTILOS PREMIUM ADICIONALES (LOADER Y SCROLL DE PORTADA)
+   ========================================================================== */
+
+/* Spinner de Carga del Catálogo */
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(184, 149, 43, 0.1);
+    border-radius: 50%;
+    border-top-color: var(--accent);
+    animation: spin-loader 1s linear infinite;
+}
+
+@keyframes spin-loader {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Indicador de Desplazamiento (Scroll Down) en Portada */
+.scroll-indicator {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    text-align: center;
+    animation: indicator-bounce 2s infinite;
+}
+
+.scroll-indicator a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--accent);
+    box-shadow: var(--shadow-md);
+    transition: var(--transition-smooth);
+    cursor: pointer;
+}
+
+.scroll-indicator a:hover {
+    color: var(--bg-primary);
+    background-color: var(--accent);
+    transform: scale(1.05);
+}
+
+@keyframes indicator-bounce {
+    0%, 20%, 50%, 80%, 100% {
+        transform: translate(-50%, 0);
+    }
+    40% {
+        transform: translate(-50%, -8px);
+    }
+    60% {
+        transform: translate(-50%, -4px);
+    }
 }

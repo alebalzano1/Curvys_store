@@ -113,6 +113,17 @@ async function initApp() {
         // Registrar Event Listeners de inmediato para que la UI responda rápido
         registerEventListeners();
 
+        // Mostrar spinner de carga elegante mientras se obtienen datos de Firebase
+        const grid = document.getElementById("products-grid");
+        if (grid) {
+            grid.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 60px 0; color: var(--text-secondary);">
+                    <div class="loading-spinner" style="margin: 0 auto 15px auto;"></div>
+                    <p style="font-family: var(--font-serif); font-size: 1.1rem; letter-spacing: 0.1em; color: var(--text-primary);">Cargando colección...</p>
+                </div>
+            `;
+        }
+
         // Obtener datos del servicio de base de datos
         products = await FirebaseService.getProducts();
         storeConfig = await FirebaseService.getConfig();
